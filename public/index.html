@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Farol — Monitor de CPL · Meta Ads</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0E1420;
+    --surface:   #18202F;
+    --surface-2: #1F2A3D;
+    --border:    #2B3850;
+    --text:      #E9EEF7;
+    --muted:     #8593AC;
+    --faint:     #5C6982;
+    --accent:    #6E8FF5;
+    --ok:        #34D399;
+    --warn:      #FBBF24;
+    --alert:     #FF5B6E;
+    --alert-bg:  rgba(255,91,110,0.10);
+    --radius:    14px;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "Inter", system-ui, sans-serif;
+    --disp: "Space Grotesk", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(110,143,245,0.10), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 22px 80px; }
+
+  /* ---------- Top bar ---------- */
+  header.bar {
+    position: sticky; top: 0; z-index: 30;
+    background: rgba(14,20,32,0.82);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .bar-inner {
+    max-width: 1240px; margin: 0 auto; padding: 16px 22px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+  .beacon {
+    width: 30px; height: 30px; position: relative; flex: none;
+  }
+  .beacon span {
+    position: absolute; inset: 0; margin: auto;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 0 0 rgba(110,143,245,0.6);
+    animation: ping 2.4s ease-out infinite;
+  }
+  @keyframes ping {
+    0%   { box-shadow: 0 0 0 0 rgba(110,143,245,0.55); }
+    70%  { box-shadow: 0 0 0 14px rgba(110,143,245,0); }
+    100% { box-shadow: 0 0 0 0 rgba(110,143,245,0); }
+  }
+  .brand h1 {
+    font-family: var(--disp); font-size: 20px; font-weight: 700;
+    letter-spacing: -0.01em; margin: 0; line-height: 1;
+  }
+  .brand .sub { font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ctrl { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl label {
+    font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--faint);
+  }
+  select, input[type="number"], input[type="text"] {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 8px 11px; font-family: var(--sans); font-size: 13px;
+    outline: none; transition: border-color .15s;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+  .threshold-input { width: 92px; font-family: var(--mono); }
+
+  button.refresh {
+    align-self: flex-end;
+    background: var(--accent); color: #0b1020; border: none;
+    border-radius: 9px; padding: 9px 16px; font-weight: 600;
+    font-size: 13px; cursor: pointer; font-family: var(--sans);
+    display: flex; align-items: center; gap: 7px; transition: filter .15s;
+  }
+  button.refresh:hover { filter: brightness(1.08); }
+  button.refresh:disabled { opacity: .55; cursor: wait; }
+
+  button.logout {
+    align-self: flex-end;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 9px; padding: 9px 14px; font-weight: 500; font-size: 13px;
+    cursor: pointer; font-family: var(--sans); transition: color .15s, border-color .15s;
+  }
+  button.logout:hover { color: var(--text); border-color: var(--muted); }
+
+  .demo-flag {
+    font-size: 11px; color: var(--warn); border: 1px solid rgba(251,191,36,.4);
+    background: rgba(251,191,36,.08); padding: 4px 10px; border-radius: 99px;
+    letter-spacing: .03em;
+  }
+
+  /* ---------- KPI row ---------- */
+  .kpis {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 12px; margin: 24px 0 8px;
+  }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; position: relative; overflow: hidden;
+  }
+  .kpi .k-label {
+    font-size: 11px; color: var(--muted); letter-spacing: .04em;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .kpi .k-value {
+    font-family: var(--disp); font-size: 27px; font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .kpi .k-sub { font-size: 12px; color: var(--faint); margin-top: 7px; }
+  .kpi.alert {
+    border-color: rgba(255,91,110,.45);
+    background: linear-gradient(180deg, var(--alert-bg), var(--surface));
+  }
+  .kpi.alert .k-value { color: var(--alert); }
+  .kpi.alert::after {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--alert);
+  }
+
+  /* ---------- Filter strip ---------- */
+  .filters {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin: 22px 0 16px;
+  }
+  .search { flex: 1; min-width: 220px; }
+  .search input { width: 100%; }
+  .toggle {
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 99px; padding: 8px 14px; font-size: 13px; user-select: none;
+  }
+  .toggle input { display: none; }
+  .switch {
+    width: 34px; height: 19px; border-radius: 99px; background: var(--surface-2);
+    border: 1px solid var(--border); position: relative; transition: background .15s;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 1.5px; left: 1.5px;
+    width: 14px; height: 14px; border-radius: 50%; background: var(--faint);
+    transition: transform .15s, background .15s;
+  }
+  .toggle input:checked + .switch { background: rgba(255,91,110,.25); border-color: var(--alert); }
+  .toggle input:checked + .switch::after { transform: translateX(15px); background: var(--alert); }
+  /* Variante verde: "Só otimizações" */
+  .toggle.opt input:checked + .switch { background: rgba(52,211,153,.22); border-color: var(--ok); }
+  .toggle.opt input:checked + .switch::after { transform: translateX(15px); background: var(--ok); }
+  .opt-tag {
+    font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--ok); border: 1px solid rgba(52,211,153,.4);
+    background: rgba(52,211,153,.1); border-radius: 5px;
+    padding: 1px 7px; margin-left: 9px; vertical-align: middle;
+    font-family: var(--sans);
+  }
+
+  /* ---------- Account cards ---------- */
+  .account {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 14px; overflow: hidden;
+  }
+  .acc-head {
+    display: flex; align-items: center; gap: 16px; padding: 15px 18px;
+    cursor: pointer; user-select: none;
+  }
+  .acc-head:hover { background: var(--surface-2); }
+  .chev { color: var(--faint); transition: transform .18s; flex: none; }
+  .account.collapsed .chev { transform: rotate(-90deg); }
+  .acc-name { font-family: var(--disp); font-weight: 600; font-size: 15.5px; }
+  .acc-id {
+    font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+    cursor: pointer; padding: 2px 7px; border: 1px solid var(--border);
+    border-radius: 6px; transition: color .15s, border-color .15s; white-space: nowrap;
+  }
+  .acc-id:hover { color: var(--accent); border-color: var(--accent); }
+  .acc-meta { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+  .acc-stat { text-align: right; }
+  .acc-stat .v { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+  .acc-stat .l { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+  .badge-alert {
+    font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--alert);
+    background: var(--alert-bg); border: 1px solid rgba(255,91,110,.35);
+    padding: 4px 9px; border-radius: 8px; white-space: nowrap;
+  }
+  .badge-ok {
+    font-size: 11px; color: var(--ok);
+    background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3);
+    padding: 4px 9px; border-radius: 8px; white-space: nowrap;
+  }
+
+  .camp-table { border-top: 1px solid var(--border); }
+  .account.collapsed .camp-table { display: none; }
+  .row {
+    display: grid;
+    grid-template-columns: 16px 1fr 110px 90px 130px;
+    gap: 14px; align-items: center;
+    padding: 11px 18px; border-top: 1px solid rgba(43,56,80,.5);
+    font-size: 13.5px;
+  }
+  .row.head {
+    border-top: none; padding-top: 9px; padding-bottom: 9px;
+    font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--faint); font-family: var(--sans);
+  }
+  .row .marker { width: 3px; height: 26px; border-radius: 2px; background: transparent; }
+  .row.over { background: var(--alert-bg); }
+  .row.over .marker { background: var(--alert); }
+  .camp-name { font-weight: 500; }
+  .cell-num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+  .cpl { font-family: var(--mono); text-align: right; font-weight: 600; }
+  .cpl.over { color: var(--alert); }
+  .cpl.warn { color: var(--warn); }
+  .cpl.ok   { color: var(--ok); }
+  .cpl.none { color: var(--faint); font-weight: 400; }
+  .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    margin-right: 6px; vertical-align: middle;
+  }
+  .dot.over { background: var(--alert); animation: blink 1.3s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+
+  /* ---------- Campanhas expansiveis + conjuntos ---------- */
+  .camp-row { cursor: pointer; }
+  .camp-row:hover { background: var(--surface-2); }
+  .cc-chev {
+    display: inline-block; color: var(--faint); margin-right: 8px;
+    transition: transform .15s; font-size: 13px; width: 8px;
+  }
+  .camp-row.open-c .cc-chev { transform: rotate(90deg); color: var(--accent); }
+  .adset-count {
+    color: var(--faint); font-size: 11px; margin-left: 9px;
+    font-family: var(--sans); letter-spacing: .02em;
+  }
+  .adset-wrap { display: none; background: rgba(0,0,0,.16); }
+  .adset-wrap.open { display: block; }
+  .adset-row { padding-top: 8px; padding-bottom: 8px; font-size: 12.5px; cursor: pointer; }
+  .adset-row:hover { background: rgba(255,255,255,.03); }
+  .adset-row.open-a .cc-chev { transform: rotate(90deg); color: var(--accent); }
+  .adset-name { color: var(--muted); padding-left: 18px; }
+  .adset-row.paused { opacity: .62; }
+  .adset-tag {
+    font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--faint); border: 1px solid var(--border); border-radius: 5px;
+    padding: 1px 6px; margin-left: 9px; vertical-align: middle;
+  }
+
+  /* ---------- Barra de saldo de fundos pre-pagos ---------- */
+  .funds-bar-wrap {
+    padding: 10px 18px 12px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .funds-label { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  .funds-track {
+    flex: 1; height: 6px; background: var(--surface-2);
+    border-radius: 99px; overflow: hidden; min-width: 60px;
+  }
+  .funds-fill {
+    height: 100%; border-radius: 99px; transition: width .4s ease;
+  }
+  .funds-fill.ok   { background: var(--ok); }
+  .funds-fill.warn { background: var(--warn); }
+  .funds-fill.crit { background: var(--alert); animation: blink 1.3s steps(2) infinite; }
+  .funds-values { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .funds-remaining { font-weight: 600; }
+  .funds-remaining.ok   { color: var(--ok); }
+  .funds-remaining.warn { color: var(--warn); }
+  .funds-remaining.crit { color: var(--alert); }
+  .funds-total { color: var(--faint); }
+
+  .ad-wrap { display: none; background: rgba(0,0,0,.28); }
+  .ad-wrap.open { display: block; }
+  .ad-row { padding-top: 7px; padding-bottom: 7px; font-size: 12px; }
+  .ad-name { color: var(--muted); padding-left: 46px; }
+  .ad-name::before { content: "↳"; color: var(--faint); margin-right: 9px; }
+  .ad-row.paused { opacity: .6; }
+  .ig-link {
+    color: var(--accent); text-decoration: none; font-family: var(--sans);
+    font-size: 11px; margin-left: 8px; white-space: nowrap;
+  }
+  .ig-link:hover { text-decoration: underline; }
+  .ig-none { color: var(--faint); font-size: 10.5px; margin-left: 8px; font-family: var(--sans); }
+
+  /* ---------- Link de notas da conta ---------- */
+  .doc-link {
+    color: var(--accent); text-decoration: none; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px;
+    margin-left: 4px; white-space: nowrap; transition: border-color .15s;
+  }
+  .doc-link:hover { border-color: var(--accent); }
+
+  .empty, .loading, .errbox {
+    text-align: center; padding: 70px 20px; color: var(--muted);
+  }
+  .errbox { color: var(--alert); }
+  .spinner {
+    width: 26px; height: 26px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    margin: 0 auto 14px; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { text-align: center; color: var(--faint); font-size: 12px; margin-top: 32px; }
+
+  /* ---------- Diagnostico de tokens ---------- */
+  .diag {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); margin: 22px 0 4px; overflow: hidden;
+  }
+  .diag-head {
+    display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+    cursor: pointer; user-select: none; font-size: 13.5px;
+  }
+  .diag-head:hover { background: var(--surface-2); }
+  .diag.warn { border-color: rgba(251,191,36,.45); }
+  .diag-pill {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 7px;
+  }
+  .diag-pill.ok { color: var(--ok); background: rgba(52,211,153,.1); }
+  .diag-pill.bad { color: var(--warn); background: rgba(251,191,36,.1); }
+  .diag-title { font-weight: 600; }
+  .diag-hint { color: var(--muted); margin-left: auto; font-size: 12px; }
+  .diag-body { border-top: 1px solid var(--border); padding: 6px 0; display: none; }
+  .diag.open .diag-body { display: block; }
+  .diag.open .diag-chev { transform: rotate(90deg); }
+  .diag-chev { color: var(--faint); transition: transform .18s; }
+  .diag-row {
+    display: grid; grid-template-columns: 90px 1fr; gap: 14px;
+    padding: 8px 18px; font-size: 13px; align-items: baseline;
+  }
+  .diag-row + .diag-row { border-top: 1px solid rgba(43,56,80,.4); }
+  .diag-tk { font-family: var(--mono); color: var(--muted); }
+  .diag-st .good { color: var(--ok); }
+  .diag-st .fail { color: var(--alert); font-family: var(--mono); }
+  .diag-st .zero { color: var(--warn); }
+  .diag-st small { color: var(--faint); display: block; margin-top: 2px; }
+
+
+  @media (max-width: 860px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .acc-meta { gap: 12px; }
+    .acc-stat.hide-sm { display: none; }
+    .row { grid-template-columns: 14px 1fr 92px 0 110px; }
+    .row .leads-col { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-inner">
+    <div class="brand">
+      <div class="beacon"><span></span></div>
+      <div>
+        <h1>Farol</h1>
+        <div class="sub">Monitor de CPL · Meta Ads</div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="ctrl">
+        <label for="range">Período</label>
+        <select id="range">
+          <option value="today">Hoje</option>
+          <option value="yesterday">Ontem</option>
+          <option value="last_7d" selected>Últimos 7 dias</option>
+          <option value="last_14d">Últimos 14 dias</option>
+          <option value="last_30d">Últimos 30 dias</option>
+          <option value="this_month">Este mês</option>
+          <option value="last_month">Mês passado</option>
+        </select>
+      </div>
+      <div class="ctrl">
+        <label for="threshold">Teto de CPL (R$)</label>
+        <input class="threshold-input" id="threshold" type="number" min="0" step="1" value="35" />
+      </div>
+      <button class="refresh" id="refresh">↻ Atualizar</button>
+      <button class="logout" id="logout" style="display:none">Sair</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="demoFlag"></div>
+  <div id="diag"></div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="filters">
+    <div class="search">
+      <input id="search" type="text" placeholder="Buscar conta ou campanha…" />
+    </div>
+    <select id="sort">
+      <option value="alerts">Ordenar: mais alertas</option>
+      <option value="cpl">Ordenar: maior CPL</option>
+      <option value="spend">Ordenar: maior investimento</option>
+      <option value="name">Ordenar: nome (A–Z)</option>
+    </select>
+    <label class="toggle">
+      <input type="checkbox" id="onlyAlerts" />
+      <span class="switch"></span>
+      Só mostrar alertas
+    </label>
+    <label class="toggle opt">
+      <input type="checkbox" id="onlyOpt" />
+      <span class="switch"></span>
+      Só otimizações
+    </label>
+  </div>
+
+  <main id="list">
+    <div class="loading"><div class="spinner"></div>Carregando contas…</div>
+  </main>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+// ---------------------------------------------------------------
+//  Estado e formatadores
+// ---------------------------------------------------------------
+const state = { data: null, collapsed: new Set(), expandedCampaigns: new Set(), expandedAdsets: new Set() };
+
+const brl = (n) =>
+  (n == null) ? "—" :
+  n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
+const int = (n) => (n ?? 0).toLocaleString("pt-BR");
+
+const el = (id) => document.getElementById(id);
+const threshold = () => parseFloat(el("threshold").value) || 35;
+
+// ---------------------------------------------------------------
+//  Dados de exemplo embutidos (usados se o backend nao responder,
+//  por ex. ao abrir o arquivo direto, sem o servidor rodando)
+// ---------------------------------------------------------------
+function embeddedDemo() {
+  const clientes = ["Clínica OdontoVita","Imobiliária Horizonte","Auto Escola Pioneira","Estética Bella Pelle","Curso Aprova Mais","Academia CorpoForte","Advocacia Mendes & Cia","Pet Shop Patinhas","Restaurante Sabor da Serra","Construtora Alicerce","Salão Studio Vip","Faculdade Saber+","Consultório Dr. Lima","Loja Solar Energia","Financeira CrediFácil","Buffet Festa Boa","Ótica Visão Clara","Marcenaria Madeira Nobre","Seguros ProtegeBem","Spa Recanto Zen"];
+  const tipos = ["Captação - Tráfego Frio","Remarketing - Site","Lookalike 1%","Promo Mensal","Interesses - Geral","Vídeo View → Lead","Formulário Instantâneo","Black Friday"];
+  const segs = ["18-24 · RJ","25-34 · SP","35-44 · BR","Lookalike 1%","Interesses A","Interesses B","Retargeting 7d","Aberto"];
+  let seed = 42; const rnd = () => { seed = (seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
+  const pick = (a) => a[Math.floor(rnd()*a.length)];
+  const accounts = clientes.map((name,i)=>{
+    const n = 2+Math.floor(rnd()*4); const used=new Set(); const campaigns=[];
+    for(let c=0;c<n;c++){ let t=pick(tipos); while(used.has(t)) t=pick(tipos); used.add(t);
+      const nA = 1+Math.floor(rnd()*3); const adsets=[];
+      for(let a=0;a<nA;a++){ const paused=rnd()<0.25; const nAds=1+Math.floor(rnd()*3); const ads=[];
+        for(let d=0;d<nAds;d++){ const ap=rnd()<0.25; let leads,cpl,sp;
+          if(rnd()<0.12){ leads=0; sp=+(35+rnd()*50).toFixed(2); cpl=null; }
+          else { leads=1+Math.floor(rnd()*25); cpl=13+rnd()*rnd()*72; sp=+(cpl*leads).toFixed(2); }
+          ads.push({id:`d${i}_${c}_${a}_${d}`,name:`Criativo ${d+1} — ${pick(["Vídeo","Imagem","Carrossel"])}`,active:!ap,instagramUrl:rnd()<0.8?"https://www.instagram.com/p/EXEMPLO123/":null,spend:sp,leads,cpl:cpl!=null?+cpl.toFixed(2):null}); }
+        const asp=+ads.reduce((s,x)=>s+x.spend,0).toFixed(2); const al=ads.reduce((s,x)=>s+x.leads,0);
+        adsets.push({id:`d${i}_${c}_${a}`,name:pick(segs),active:!paused,spend:asp,leads:al,cpl:al?+(asp/al).toFixed(2):null,ads}); }
+      const spend=+adsets.reduce((s,x)=>s+x.spend,0).toFixed(2); const leads=adsets.reduce((s,x)=>s+x.leads,0);
+      campaigns.push({id:`d${i}_${c}`,name:t,spend,leads,cpl:leads?+(spend/leads).toFixed(2):null,adsets});
+    }
+    const spend=campaigns.reduce((s,x)=>s+x.spend,0); const leads=campaigns.reduce((s,x)=>s+x.leads,0);
+    const isPrepaid=rnd()<0.6; const fT=isPrepaid?+(500+rnd()*4500).toFixed(2):null;
+    const fS=isPrepaid?+(fT*(0.2+rnd()*0.85)).toFixed(2):null;
+    const fR=isPrepaid?+(fT-fS).toFixed(2):null; const fP=isPrepaid?(fS/fT)*100:null;
+    return {id:`act_demo_${i}`,name,currency:"BRL",docUrl:i%4===0?"https://docs.google.com/document/d/EXEMPLO":null,spend:+spend.toFixed(2),leads,cpl:leads?+(spend/leads).toFixed(2):null,fundsTotal:fT,fundsSpent:fS,fundsRemaining:fR,fundsPct:fP,campaigns};
+  });
+  return { demo:true, generatedAt:new Date().toISOString(), currency:"BRL", accounts };
+}
+
+// ---------------------------------------------------------------
+//  Carregamento (tenta o backend; cai no demo embutido se falhar)
+// ---------------------------------------------------------------
+async function load(fresh = false) {
+  const btn = el("refresh"); btn.disabled = true;
+  el("list").innerHTML = '<div class="loading"><div class="spinner"></div>Carregando contas…</div>';
+  const range = el("range").value;
+  const t = threshold();
+  try {
+    const res = await fetch(`/api/data?range=${range}&threshold=${t}${fresh ? "&fresh=1" : ""}`);
+    if (res.status === 401) { location.href = "/login"; return; }
+    if (!res.ok) {
+      const e = await res.json().catch(()=>({}));
+      throw new Error(e.error || "Erro ao consultar o servidor.");
+    }
+    state.data = await res.json();
+  } catch (err) {
+    // Sem servidor (arquivo aberto direto) -> demonstração embutida.
+    state.data = embeddedDemo();
+  }
+  render();
+  btn.disabled = false;
+}
+
+// ---------------------------------------------------------------
+//  Render
+// ---------------------------------------------------------------
+function renderDiagnostics(data) {
+  const box = el("diag");
+  const report = data.tokenReport;
+  // Sem multiplos tokens (ou modo demo) -> nao mostra diagnostico.
+  if (data.demo || !Array.isArray(report) || !report.length) {
+    box.innerHTML = "";
+    return;
+  }
+
+  const total = data.tokenCount || report.length;
+  const okCount = report.filter((r) => r.ok && r.count > 0).length;
+  const problems = report.filter((r) => !r.ok || r.count === 0);
+  const accountsFound = data.accounts.length;
+  const allGood = problems.length === 0;
+
+  const statusFor = (r) => {
+    if (!r.ok)
+      return `<span class="fail">✕ erro</span><small>${escapeHtml(r.error || "falha")}</small>`;
+    if (r.count === 0)
+      return `<span class="zero">⚠ 0 contas</span><small>token válido, mas sem contas (falta ads_read ou contas não atribuídas ao System User)</small>`;
+    return `<span class="good">✓ ${r.count} ${r.count === 1 ? "conta" : "contas"}</span>`;
+  };
+
+  const rows = report
+    .map(
+      (r) => `<div class="diag-row">
+        <div class="diag-tk">${escapeHtml(r.label)}</div>
+        <div class="diag-st">${statusFor(r)}</div>
+      </div>`
+    )
+    .join("");
+
+  const open = state.diagOpen ? "open" : "";
+  const warnCls = allGood ? "" : "warn";
+  const pill = allGood
+    ? `<span class="diag-pill ok">${okCount}/${total} OK</span>`
+    : `<span class="diag-pill bad">${problems.length} de ${total} com problema</span>`;
+
+  box.innerHTML = `
+    <div class="diag ${warnCls} ${open}">
+      <div class="diag-head" id="diagHead">
+        <svg class="diag-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+        ${pill}
+        <span class="diag-title">${accountsFound} ${accountsFound === 1 ? "conta carregada" : "contas carregadas"} de ${total} ${total === 1 ? "token" : "tokens"}</span>
+        <span class="diag-hint">${allGood ? "tudo certo · ver detalhes" : "clique para ver quais tokens falharam"}</span>
+      </div>
+      <div class="diag-body">${rows}</div>
+    </div>`;
+
+  el("diagHead").addEventListener("click", () => {
+    state.diagOpen = !state.diagOpen;
+    box.querySelector(".diag").classList.toggle("open");
+  });
+}
+
+function cplClass(cpl, t) {
+  if (cpl == null) return "none";
+  if (cpl > t) return "over";
+  if (cpl >= t * 0.85) return "warn";
+  return "ok";
+}
+
+// Um item (campanha ou conjunto) esta "ruim/acima" quando:
+//  - o CPL passou do teto; OU
+//  - gastou >= teto e nao trouxe nenhum lead (dinheiro desperdicado).
+function isOver(x, t) {
+  if (x.cpl != null && x.cpl > t) return true;
+  if ((x.leads || 0) === 0 && (x.spend || 0) >= t) return true;
+  return false;
+}
+
+// Monta a celula de CPL, tratando o caso "gastou e nao trouxe lead".
+function cplCell(x, t) {
+  if ((x.leads || 0) === 0 && (x.spend || 0) >= t) {
+    return `<div class="cpl over">sem lead</div>`;
+  }
+  return `<div class="cpl ${cplClass(x.cpl, t)}">${brl(x.cpl)}</div>`;
+}
+
+function render() {
+  const data = state.data;
+  if (!data) return;
+  const t = threshold();
+
+  el("demoFlag").innerHTML = data.demo
+    ? '<span class="demo-flag">● Modo demonstração — dados de exemplo. Conecte seu token do Meta para ver dados reais.</span>'
+    : "";
+
+  el("logout").style.display = data.auth ? "" : "none";
+
+  renderDiagnostics(data);
+
+  // Agrega
+  let totalSpend = 0, totalLeads = 0, alertCampaigns = 0, alertAccounts = 0;
+  for (const a of data.accounts) {
+    totalSpend += a.spend || 0; totalLeads += a.leads || 0;
+    const over = (a.campaigns||[]).filter(c => isOver(c, t)).length;
+    if (over > 0) alertAccounts++;
+    alertCampaigns += over;
+  }
+  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : null;
+
+  // KPIs
+  el("kpis").innerHTML = `
+    <div class="kpi">
+      <div class="k-label">Contas ativas</div>
+      <div class="k-value">${data.accounts.length}</div>
+      <div class="k-sub">monitoradas em tempo real</div>
+    </div>
+    <div class="kpi alert">
+      <div class="k-label">Campanhas em alerta</div>
+      <div class="k-value">${alertCampaigns}</div>
+      <div class="k-sub">em ${alertAccounts} ${alertAccounts===1?"conta":"contas"} · CPL &gt; R$ ${t.toFixed(0)} ou sem lead</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Investimento total</div>
+      <div class="k-value" style="font-size:22px">${brl(totalSpend)}</div>
+      <div class="k-sub">no período selecionado</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Leads totais</div>
+      <div class="k-value">${int(totalLeads)}</div>
+      <div class="k-sub">soma de todas as contas</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">CPL médio geral</div>
+      <div class="k-value ${avgCpl!=null && avgCpl>t ? "" : ""}" style="font-size:22px;color:${avgCpl!=null && avgCpl>t ? "var(--alert)" : "var(--text)"}">${brl(avgCpl)}</div>
+      <div class="k-sub">gasto total ÷ leads totais</div>
+    </div>`;
+
+  // Filtros
+  const q = el("search").value.trim().toLowerCase();
+  const onlyAlerts = el("onlyAlerts").checked;
+  const onlyOpt = el("onlyOpt").checked;
+  const sort = el("sort").value;
+
+  let accounts = data.accounts.map(a => {
+    const camps = (a.campaigns||[]).map(c => ({ ...c, over: isOver(c, t) }));
+    return { ...a, campaigns: camps, overCount: camps.filter(c=>c.over).length };
+  });
+
+  if (q) {
+    const campMatch = (c) =>
+      c.name.toLowerCase().includes(q) ||
+      (c.adsets || []).some(s => (s.name || "").toLowerCase().includes(q));
+    accounts = accounts.filter(a =>
+      a.name.toLowerCase().includes(q) || a.campaigns.some(campMatch)
+    ).map(a => {
+      if (a.name.toLowerCase().includes(q)) return a;
+      return { ...a, campaigns: a.campaigns.filter(campMatch) };
+    });
+  }
+
+  if (onlyAlerts) {
+    accounts = accounts
+      .map(a => ({ ...a, campaigns: a.campaigns.filter(c => c.over) }))
+      .filter(a => a.campaigns.length > 0);
+  }
+
+  // "Só otimizações": apenas campanhas com mais de 1 conjunto LIGADO
+  // (ativo) — candidatas a otimizar desligando os conjuntos ruins.
+  if (onlyOpt) {
+    const activeAdsets = (c) => (c.adsets || []).filter(s => s.active).length;
+    accounts = accounts
+      .map(a => ({ ...a, campaigns: a.campaigns.filter(c => activeAdsets(c) > 1) }))
+      .filter(a => a.campaigns.length > 0);
+  }
+
+  accounts.sort((a,b) => {
+    if (sort === "alerts") return b.overCount - a.overCount || (b.cpl||0)-(a.cpl||0);
+    if (sort === "cpl")    return (b.cpl||0) - (a.cpl||0);
+    if (sort === "spend")  return (b.spend||0) - (a.spend||0);
+    return a.name.localeCompare(b.name, "pt-BR");
+  });
+
+  const list = el("list");
+  if (!accounts.length) {
+    list.innerHTML = '<div class="empty">Nenhuma conta ou campanha corresponde ao filtro.</div>';
+  } else {
+    list.innerHTML = accounts.map(a => accountCard(a, t)).join("");
+  }
+
+  // Clique no ID da conta -> copia para a area de transferencia
+  list.querySelectorAll(".acc-id").forEach(el => {
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const id = el.dataset.accid;
+      const original = el.textContent;
+      try {
+        await navigator.clipboard.writeText(id);
+        el.textContent = "copiado!";
+      } catch (_) {
+        el.textContent = id; // sem permissao de clipboard: so mantem visivel
+      }
+      setTimeout(() => { el.textContent = original; }, 1200);
+    });
+  });
+
+  // Toggle de expandir/recolher contas
+  list.querySelectorAll(".acc-head").forEach(h => {
+    h.addEventListener("click", () => {
+      const id = h.dataset.id;
+      if (state.collapsed.has(id)) state.collapsed.delete(id);
+      else state.collapsed.add(id);
+      h.parentElement.classList.toggle("collapsed");
+    });
+  });
+
+  // Toggle de abrir campanha -> conjuntos
+  list.querySelectorAll(".camp-row").forEach(r => {
+    r.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cid = r.dataset.cid;
+      if (state.expandedCampaigns.has(cid)) state.expandedCampaigns.delete(cid);
+      else state.expandedCampaigns.add(cid);
+      r.classList.toggle("open-c");
+      const wrap = list.querySelector(`.adset-wrap[data-wrap="${cid}"]`);
+      if (wrap) wrap.classList.toggle("open");
+    });
+  });
+
+  // Toggle de abrir conjunto -> anúncios
+  list.querySelectorAll(".adset-row[data-asid]").forEach(r => {
+    r.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const asid = r.dataset.asid;
+      if (state.expandedAdsets.has(asid)) state.expandedAdsets.delete(asid);
+      else state.expandedAdsets.add(asid);
+      r.classList.toggle("open-a");
+      const wrap = list.querySelector(`.ad-wrap[data-adwrap="${asid}"]`);
+      if (wrap) wrap.classList.toggle("open");
+    });
+  });
+
+  const when = new Date(data.generatedAt).toLocaleString("pt-BR");
+  const cacheTxt = data.cached ? ` · cache de ${data.cacheAge}s atrás (clique em Atualizar para forçar)` : "";
+  el("foot").textContent = `Atualizado em ${when}` + cacheTxt + (data.demo ? " · dados de exemplo" : "");
+}
+
+function fundsBar(a) {
+  if (a.fundsTotal == null) return ""; // pós-pago, sem dado
+  const pct = Math.min(a.fundsPct || 0, 100);
+  const remaining = a.fundsRemaining || 0;
+  // Verde até 40% consumido, amarelo até 80%, vermelho acima
+  const cls = pct < 40 ? "ok" : pct < 80 ? "warn" : "crit";
+  const label = pct >= 80
+    ? "⚠ Verba acabando"
+    : pct >= 40 ? "Verba" : "Verba";
+  return `
+    <div class="funds-bar-wrap">
+      <span class="funds-label">${label}</span>
+      <div class="funds-track">
+        <div class="funds-fill ${cls}" style="width:${pct.toFixed(1)}%"></div>
+      </div>
+      <div class="funds-values">
+        <span class="funds-remaining ${cls}">${brl(remaining)}</span>
+        <span class="funds-total"> / ${brl(a.fundsTotal)}</span>
+      </div>
+    </div>`;
+}
+
+function accountCard(a, t) {
+  const collapsed = state.collapsed.has(a.id) ? "collapsed" : "";
+  const badge = a.overCount > 0
+    ? `<span class="badge-alert">▲ ${a.overCount} em alerta</span>`
+    : `<span class="badge-ok">✓ tudo no alvo</span>`;
+  const accCplColor = isOver(a, t) ? "var(--alert)" : "var(--text)";
+
+  const rows = a.campaigns.map(c => {
+    const dot = c.over ? '<span class="dot over"></span>' : "";
+    const isOpen = state.expandedCampaigns.has(c.id);
+    const adsets = c.adsets || [];
+    const count = adsets.length;
+    const activeCount = adsets.filter(s => s.active).length;
+    const countLabel = count
+      ? `<span class="adset-count">${count} ${count === 1 ? "conjunto" : "conjuntos"}${activeCount !== count ? ` · ${activeCount} ligado${activeCount === 1 ? "" : "s"}` : ""}</span>`
+      : "";
+    const optTag = activeCount > 1 ? '<span class="opt-tag">otimizável</span>' : "";
+
+    const adsetRows = adsets.map(s => {
+      const sover = isOver(s, t);
+      const sdot = sover ? '<span class="dot over"></span>' : "";
+      const pausedTag = s.active === false ? '<span class="adset-tag">pausado</span>' : "";
+      const aOpen = state.expandedAdsets.has(s.id);
+      const ads = s.ads || [];
+      const adsLabel = ads.length
+        ? `<span class="adset-count">${ads.length} ${ads.length === 1 ? "anúncio" : "anúncios"}</span>`
+        : "";
+
+      const adRows = ads.map(ad => {
+        const adover = isOver(ad, t);
+        const addot = adover ? '<span class="dot over"></span>' : "";
+        const adPaused = ad.active === false ? '<span class="adset-tag">pausado</span>' : "";
+        const ig = ad.instagramUrl
+          ? `<a class="ig-link" href="${escapeHtml(ad.instagramUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Instagram</a>`
+          : `<span class="ig-none">sem link IG</span>`;
+        return `
+          <div class="row ad-row ${adover ? "over" : ""} ${ad.active === false ? "paused" : ""}">
+            <div class="marker"></div>
+            <div class="ad-name">${addot}${escapeHtml(ad.name)} ${ig}${adPaused}</div>
+            <div class="cell-num">${brl(ad.spend)}</div>
+            <div class="cell-num leads-col">${int(ad.leads)}</div>
+            ${cplCell(ad, t)}
+          </div>`;
+      }).join("");
+
+      return `
+        <div class="row adset-row sub-row ${sover ? "over" : ""} ${s.active === false ? "paused" : ""} ${aOpen ? "open-a" : ""}" data-asid="${s.id}">
+          <div class="marker"></div>
+          <div class="adset-name"><span class="cc-chev">›</span>${sdot}${escapeHtml(s.name)}${pausedTag}${adsLabel}</div>
+          <div class="cell-num">${brl(s.spend)}</div>
+          <div class="cell-num leads-col">${int(s.leads)}</div>
+          ${cplCell(s, t)}
+        </div>
+        <div class="ad-wrap ${aOpen ? "open" : ""}" data-adwrap="${s.id}">${adRows}</div>`;
+    }).join("");
+
+    const emptyMsg = `<div class="row"><div></div><div class="adset-name" style="color:var(--faint)">Sem conjuntos com dados no período.</div><div></div><div class="leads-col"></div><div></div></div>`;
+
+    return `
+      <div class="row camp-row ${c.over ? "over" : ""} ${isOpen ? "open-c" : ""}" data-cid="${c.id}">
+        <div class="marker"></div>
+        <div class="camp-name"><span class="cc-chev">›</span>${dot}${escapeHtml(c.name)}${countLabel}${optTag}</div>
+        <div class="cell-num">${brl(c.spend)}</div>
+        <div class="cell-num leads-col">${int(c.leads)}</div>
+        ${cplCell(c, t)}
+      </div>
+      <div class="adset-wrap ${isOpen ? "open" : ""}" data-wrap="${c.id}">${adsetRows || emptyMsg}</div>`;
+  }).join("");
+
+  return `
+    <div class="account ${collapsed}">
+      <div class="acc-head" data-id="${a.id}">
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+        <span class="acc-name">${escapeHtml(a.name)}</span>
+        <span class="acc-id" data-accid="${escapeHtml(a.id)}" title="Clique para copiar o ID">${escapeHtml(a.id)}</span>
+        ${a.docUrl ? `<a class="doc-link" href="${escapeHtml(a.docUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir notas da conta">📄 Notas</a>` : ""}
+        <div class="acc-meta">
+          <div class="acc-stat hide-sm"><div class="v">${brl(a.spend)}</div><div class="l">investido</div></div>
+          <div class="acc-stat hide-sm"><div class="v">${int(a.leads)}</div><div class="l">leads</div></div>
+          <div class="acc-stat"><div class="v" style="color:${accCplColor}">${brl(a.cpl)}</div><div class="l">CPL médio</div></div>
+          ${badge}
+        </div>
+      </div>
+      <div class="camp-table">
+        <div class="row head">
+          <div></div><div>Campanha / conjunto / anúncio</div>
+          <div style="text-align:right">Investido</div>
+          <div style="text-align:right" class="leads-col">Leads</div>
+          <div style="text-align:right">CPL</div>
+        </div>
+        ${rows}
+      </div>
+      ${fundsBar(a)}
+    </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
+
+// ---------------------------------------------------------------
+//  Eventos
+// ---------------------------------------------------------------
+el("refresh").addEventListener("click", () => load(true));
+el("logout").addEventListener("click", async () => {
+  try { await fetch("/api/logout", { method: "POST" }); } catch (_) {}
+  location.href = "/login";
+});
+el("range").addEventListener("change", () => load(false));
+["search","onlyAlerts","onlyOpt","sort"].forEach(id => el(id).addEventListener("input", render));
+el("threshold").addEventListener("input", render);
+
+load();
+</script>
+</body>
+</html>

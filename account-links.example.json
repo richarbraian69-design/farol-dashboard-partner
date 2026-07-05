@@ -1,0 +1,7 @@
+{
+  "_comentario": "Copie este arquivo para account-links.json e preencha. A CHAVE pode ser o NOME da conta (como aparece no painel) OU o ID (act_123...). O VALOR e o link (Google Docs ou qualquer URL). Linhas com _ sao ignoradas.",
+
+  "PROGRESS - TED": "https://docs.google.com/document/d/COLE_O_ID_DO_DOC_AQUI/edit",
+  "[CAO1] RENATO JUNIOR": "https://docs.google.com/document/d/OUTRO_DOC/edit",
+  "act_1234567890": "https://docs.google.com/document/d/POR_ID_TAMBEM_FUNCIONA/edit"
+}
