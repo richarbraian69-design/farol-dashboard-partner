@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Farol — Monitor de CPL · Meta Ads</title>
+<title>Farol — Monitor de Campanhas · Meta Ads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -98,14 +98,6 @@
   button.refresh:hover { filter: brightness(1.08); }
   button.refresh:disabled { opacity: .55; cursor: wait; }
 
-  button.logout {
-    align-self: flex-end;
-    background: transparent; color: var(--muted); border: 1px solid var(--border);
-    border-radius: 9px; padding: 9px 14px; font-weight: 500; font-size: 13px;
-    cursor: pointer; font-family: var(--sans); transition: color .15s, border-color .15s;
-  }
-  button.logout:hover { color: var(--text); border-color: var(--muted); }
-
   .demo-flag {
     font-size: 11px; color: var(--warn); border: 1px solid rgba(251,191,36,.4);
     background: rgba(251,191,36,.08); padding: 4px 10px; border-radius: 99px;
@@ -114,7 +106,7 @@
 
   /* ---------- KPI row ---------- */
   .kpis {
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 12px; margin: 24px 0 8px;
   }
   .kpi {
@@ -164,16 +156,6 @@
   }
   .toggle input:checked + .switch { background: rgba(255,91,110,.25); border-color: var(--alert); }
   .toggle input:checked + .switch::after { transform: translateX(15px); background: var(--alert); }
-  /* Variante verde: "Só otimizações" */
-  .toggle.opt input:checked + .switch { background: rgba(52,211,153,.22); border-color: var(--ok); }
-  .toggle.opt input:checked + .switch::after { transform: translateX(15px); background: var(--ok); }
-  .opt-tag {
-    font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
-    color: var(--ok); border: 1px solid rgba(52,211,153,.4);
-    background: rgba(52,211,153,.1); border-radius: 5px;
-    padding: 1px 7px; margin-left: 9px; vertical-align: middle;
-    font-family: var(--sans);
-  }
 
   /* ---------- Account cards ---------- */
   .account {
@@ -188,12 +170,6 @@
   .chev { color: var(--faint); transition: transform .18s; flex: none; }
   .account.collapsed .chev { transform: rotate(-90deg); }
   .acc-name { font-family: var(--disp); font-weight: 600; font-size: 15.5px; }
-  .acc-id {
-    font-family: var(--mono); font-size: 10.5px; color: var(--faint);
-    cursor: pointer; padding: 2px 7px; border: 1px solid var(--border);
-    border-radius: 6px; transition: color .15s, border-color .15s; white-space: nowrap;
-  }
-  .acc-id:hover { color: var(--accent); border-color: var(--accent); }
   .acc-meta { margin-left: auto; display: flex; align-items: center; gap: 22px; }
   .acc-stat { text-align: right; }
   .acc-stat .v { font-family: var(--mono); font-size: 14px; font-weight: 500; }
@@ -213,7 +189,7 @@
   .account.collapsed .camp-table { display: none; }
   .row {
     display: grid;
-    grid-template-columns: 16px 1fr 110px 90px 130px;
+    grid-template-columns: 16px 1fr 110px 130px;
     gap: 14px; align-items: center;
     padding: 11px 18px; border-top: 1px solid rgba(43,56,80,.5);
     font-size: 13.5px;
@@ -228,11 +204,10 @@
   .row.over .marker { background: var(--alert); }
   .camp-name { font-weight: 500; }
   .cell-num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
-  .cpl { font-family: var(--mono); text-align: right; font-weight: 600; }
-  .cpl.over { color: var(--alert); }
-  .cpl.warn { color: var(--warn); }
-  .cpl.ok   { color: var(--ok); }
-  .cpl.none { color: var(--faint); font-weight: 400; }
+  .result { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .result .rv { font-weight: 600; }
+  .result .ru { font-family: var(--sans); font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
+  .result.none { color: var(--faint); font-weight: 400; }
   .dot {
     display: inline-block; width: 7px; height: 7px; border-radius: 50%;
     margin-right: 6px; vertical-align: middle;
@@ -265,29 +240,7 @@
     padding: 1px 6px; margin-left: 9px; vertical-align: middle;
   }
 
-  /* ---------- Barra de saldo de fundos pre-pagos ---------- */
-  .funds-bar-wrap {
-    padding: 10px 18px 12px; border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 14px;
-  }
-  .funds-label { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
-  .funds-track {
-    flex: 1; height: 6px; background: var(--surface-2);
-    border-radius: 99px; overflow: hidden; min-width: 60px;
-  }
-  .funds-fill {
-    height: 100%; border-radius: 99px; transition: width .4s ease;
-  }
-  .funds-fill.ok   { background: var(--ok); }
-  .funds-fill.warn { background: var(--warn); }
-  .funds-fill.crit { background: var(--alert); animation: blink 1.3s steps(2) infinite; }
-  .funds-values { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
-  .funds-remaining { font-weight: 600; }
-  .funds-remaining.ok   { color: var(--ok); }
-  .funds-remaining.warn { color: var(--warn); }
-  .funds-remaining.crit { color: var(--alert); }
-  .funds-total { color: var(--faint); }
-
+  /* ---------- Nivel de anuncio ---------- */
   .ad-wrap { display: none; background: rgba(0,0,0,.28); }
   .ad-wrap.open { display: block; }
   .ad-row { padding-top: 7px; padding-bottom: 7px; font-size: 12px; }
@@ -361,8 +314,7 @@
     .kpis { grid-template-columns: repeat(2, 1fr); }
     .acc-meta { gap: 12px; }
     .acc-stat.hide-sm { display: none; }
-    .row { grid-template-columns: 14px 1fr 92px 0 110px; }
-    .row .leads-col { display: none; }
+    .row { grid-template-columns: 14px 1fr 82px 104px; }
   }
 </style>
 </head>
@@ -374,7 +326,7 @@
       <div class="beacon"><span></span></div>
       <div>
         <h1>Farol</h1>
-        <div class="sub">Monitor de CPL · Meta Ads</div>
+        <div class="sub">Monitor de Campanhas · Meta Ads</div>
       </div>
     </div>
     <div class="controls">
@@ -390,12 +342,7 @@
           <option value="last_month">Mês passado</option>
         </select>
       </div>
-      <div class="ctrl">
-        <label for="threshold">Teto de CPL (R$)</label>
-        <input class="threshold-input" id="threshold" type="number" min="0" step="1" value="35" />
-      </div>
       <button class="refresh" id="refresh">↻ Atualizar</button>
-      <button class="logout" id="logout" style="display:none">Sair</button>
     </div>
   </div>
 </header>
@@ -411,21 +358,9 @@
       <input id="search" type="text" placeholder="Buscar conta ou campanha…" />
     </div>
     <select id="sort">
-      <option value="alerts">Ordenar: mais alertas</option>
-      <option value="cpl">Ordenar: maior CPL</option>
-      <option value="spend">Ordenar: maior investimento</option>
+      <option value="spend" selected>Ordenar: maior investimento</option>
       <option value="name">Ordenar: nome (A–Z)</option>
     </select>
-    <label class="toggle">
-      <input type="checkbox" id="onlyAlerts" />
-      <span class="switch"></span>
-      Só mostrar alertas
-    </label>
-    <label class="toggle opt">
-      <input type="checkbox" id="onlyOpt" />
-      <span class="switch"></span>
-      Só otimizações
-    </label>
   </div>
 
   <main id="list">
@@ -447,37 +382,39 @@ const brl = (n) =>
 const int = (n) => (n ?? 0).toLocaleString("pt-BR");
 
 const el = (id) => document.getElementById(id);
-const threshold = () => parseFloat(el("threshold").value) || 35;
+const threshold = () => { const e = el("threshold"); return (e && parseFloat(e.value)) || 35; };
 
 // ---------------------------------------------------------------
 //  Dados de exemplo embutidos (usados se o backend nao responder,
 //  por ex. ao abrir o arquivo direto, sem o servidor rodando)
 // ---------------------------------------------------------------
 function embeddedDemo() {
-  const clientes = ["Clínica OdontoVita","Imobiliária Horizonte","Auto Escola Pioneira","Estética Bella Pelle","Curso Aprova Mais","Academia CorpoForte","Advocacia Mendes & Cia","Pet Shop Patinhas","Restaurante Sabor da Serra","Construtora Alicerce","Salão Studio Vip","Faculdade Saber+","Consultório Dr. Lima","Loja Solar Energia","Financeira CrediFácil","Buffet Festa Boa","Ótica Visão Clara","Marcenaria Madeira Nobre","Seguros ProtegeBem","Spa Recanto Zen"];
-  const tipos = ["Captação - Tráfego Frio","Remarketing - Site","Lookalike 1%","Promo Mensal","Interesses - Geral","Vídeo View → Lead","Formulário Instantâneo","Black Friday"];
-  const segs = ["18-24 · RJ","25-34 · SP","35-44 · BR","Lookalike 1%","Interesses A","Interesses B","Retargeting 7d","Aberto"];
+  const clientes = ["Clínica Face Harmonia","Estética Bella Pelle","Studio Lorena Bevilaqua","Instituto Renova Estética","Clínica Vittalis","Espaço Derme & Arte","Harmoniza Odonto & Face","Clínica Dra. Paula Reis","Belle Âme Estética","Studio Facial Prime","Clínica NovaPele","Espaço Rejuvenesce","Instituto Sublime","Clínica Essence","Derma Studio Aurora","Clínica Lumière","Face & Forma","Studio Beleza Real","Clínica Vitta Estética","Espaço Zenith"];
+  const TYPES = [
+    { type:"video",       name:"Videoview - Institucional", min:200,  max:2500 },
+    { type:"messaging",   name:"Mensagens - WhatsApp",      min:4,    max:40 },
+    { type:"engagement",  name:"Engajamento - Reels",       min:80,   max:900 },
+    { type:"leads",       name:"Leads - Avaliação",         min:2,    max:25 },
+    { type:"clicks",      name:"Tráfego - Agendamento",     min:20,   max:260 },
+    { type:"impressions", name:"Alcance - Região",          min:2000, max:30000 },
+  ];
+  const segs = ["18-24 · Cidade","25-34 · Região","35-44 · BR","Lookalike 1%","Interesses - Estética","Retargeting 7d","Aberto","Mulheres 30-50"];
   let seed = 42; const rnd = () => { seed = (seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
   const pick = (a) => a[Math.floor(rnd()*a.length)];
+  const inRange = (t) => t.min + Math.floor(rnd()*(t.max-t.min));
   const accounts = clientes.map((name,i)=>{
     const n = 2+Math.floor(rnd()*4); const used=new Set(); const campaigns=[];
-    for(let c=0;c<n;c++){ let t=pick(tipos); while(used.has(t)) t=pick(tipos); used.add(t);
+    for(let c=0;c<n;c++){ let ct=pick(TYPES); while(used.has(ct.name)) ct=pick(TYPES); used.add(ct.name);
       const nA = 1+Math.floor(rnd()*3); const adsets=[];
       for(let a=0;a<nA;a++){ const paused=rnd()<0.25; const nAds=1+Math.floor(rnd()*3); const ads=[];
-        for(let d=0;d<nAds;d++){ const ap=rnd()<0.25; let leads,cpl,sp;
-          if(rnd()<0.12){ leads=0; sp=+(35+rnd()*50).toFixed(2); cpl=null; }
-          else { leads=1+Math.floor(rnd()*25); cpl=13+rnd()*rnd()*72; sp=+(cpl*leads).toFixed(2); }
-          ads.push({id:`d${i}_${c}_${a}_${d}`,name:`Criativo ${d+1} — ${pick(["Vídeo","Imagem","Carrossel"])}`,active:!ap,instagramUrl:rnd()<0.8?"https://www.instagram.com/p/EXEMPLO123/":null,spend:sp,leads,cpl:cpl!=null?+cpl.toFixed(2):null}); }
-        const asp=+ads.reduce((s,x)=>s+x.spend,0).toFixed(2); const al=ads.reduce((s,x)=>s+x.leads,0);
-        adsets.push({id:`d${i}_${c}_${a}`,name:pick(segs),active:!paused,spend:asp,leads:al,cpl:al?+(asp/al).toFixed(2):null,ads}); }
-      const spend=+adsets.reduce((s,x)=>s+x.spend,0).toFixed(2); const leads=adsets.reduce((s,x)=>s+x.leads,0);
-      campaigns.push({id:`d${i}_${c}`,name:t,spend,leads,cpl:leads?+(spend/leads).toFixed(2):null,adsets});
+        for(let d=0;d<nAds;d++){ const ap=rnd()<0.25; const dead=rnd()<0.12;
+          const result = dead ? 0 : inRange(ct); const sp=+(25+rnd()*260).toFixed(2);
+          ads.push({id:`d${i}_${c}_${a}_${d}`,name:`Criativo ${d+1} — ${pick(["Vídeo","Imagem","Carrossel"])}`,active:!ap,instagramUrl:rnd()<0.8?"https://www.instagram.com/p/EXEMPLO123/":null,spend:sp,result,resultType:ct.type}); }
+        adsets.push({id:`d${i}_${c}_${a}`,name:pick(segs),active:!paused,spend:+ads.reduce((s,x)=>s+x.spend,0).toFixed(2),result:ads.reduce((s,x)=>s+x.result,0),resultType:ct.type,ads}); }
+      campaigns.push({id:`d${i}_${c}`,name:ct.name,spend:+adsets.reduce((s,x)=>s+x.spend,0).toFixed(2),result:adsets.reduce((s,x)=>s+x.result,0),resultType:ct.type,adsets});
     }
-    const spend=campaigns.reduce((s,x)=>s+x.spend,0); const leads=campaigns.reduce((s,x)=>s+x.leads,0);
-    const isPrepaid=rnd()<0.6; const fT=isPrepaid?+(500+rnd()*4500).toFixed(2):null;
-    const fS=isPrepaid?+(fT*(0.2+rnd()*0.85)).toFixed(2):null;
-    const fR=isPrepaid?+(fT-fS).toFixed(2):null; const fP=isPrepaid?(fS/fT)*100:null;
-    return {id:`act_demo_${i}`,name,currency:"BRL",docUrl:i%4===0?"https://docs.google.com/document/d/EXEMPLO":null,spend:+spend.toFixed(2),leads,cpl:leads?+(spend/leads).toFixed(2):null,fundsTotal:fT,fundsSpent:fS,fundsRemaining:fR,fundsPct:fP,campaigns};
+    const types=new Set(campaigns.map(x=>x.resultType));
+    return {id:`act_demo_${i}`,name,currency:"BRL",docUrl:i%4===0?"https://docs.google.com/document/d/EXEMPLO":null,spend:+campaigns.reduce((s,x)=>s+x.spend,0).toFixed(2),result:campaigns.reduce((s,x)=>s+x.result,0),resultType:types.size===1?[...types][0]:"misto",campaigns};
   });
   return { demo:true, generatedAt:new Date().toISOString(), currency:"BRL", accounts };
 }
@@ -492,7 +429,6 @@ async function load(fresh = false) {
   const t = threshold();
   try {
     const res = await fetch(`/api/data?range=${range}&threshold=${t}${fresh ? "&fresh=1" : ""}`);
-    if (res.status === 401) { location.href = "/login"; return; }
     if (!res.ok) {
       const e = await res.json().catch(()=>({}));
       throw new Error(e.error || "Erro ao consultar o servidor.");
@@ -564,28 +500,24 @@ function renderDiagnostics(data) {
   });
 }
 
-function cplClass(cpl, t) {
-  if (cpl == null) return "none";
-  if (cpl > t) return "over";
-  if (cpl >= t * 0.85) return "warn";
-  return "ok";
-}
-
-// Um item (campanha ou conjunto) esta "ruim/acima" quando:
-//  - o CPL passou do teto; OU
-//  - gastou >= teto e nao trouxe nenhum lead (dinheiro desperdicado).
-function isOver(x, t) {
-  if (x.cpl != null && x.cpl > t) return true;
-  if ((x.leads || 0) === 0 && (x.spend || 0) >= t) return true;
+// Adaptado para clinicas: cada campanha tem um objetivo diferente (alcance,
+// videoview, leads). Por isso NAO julgamos nada por custo por lead — nenhuma
+// campanha e marcada como "em alerta" e todas aparecem normalmente.
+function isOver() {
   return false;
 }
 
-// Monta a celula de CPL, tratando o caso "gastou e nao trouxe lead".
-function cplCell(x, t) {
-  if ((x.leads || 0) === 0 && (x.spend || 0) >= t) {
-    return `<div class="cpl over">sem lead</div>`;
-  }
-  return `<div class="cpl ${cplClass(x.cpl, t)}">${brl(x.cpl)}</div>`;
+// O "resultado" muda conforme o objetivo da campanha. Cada chave canonica
+// (definida no backend) vira um rotulo curto aqui.
+const RESULT_LABELS = {
+  video: "views", messaging: "conversas", engagement: "engaj.",
+  leads: "leads", clicks: "cliques", impressions: "impressões",
+  other: "resultados", misto: "resultados",
+};
+function resultCell(x) {
+  if (!x.result) return `<div class="result none">—</div>`;
+  const label = RESULT_LABELS[x.resultType] || "resultados";
+  return `<div class="result"><span class="rv">${int(x.result)}</span> <span class="ru">${label}</span></div>`;
 }
 
 function render() {
@@ -597,19 +529,15 @@ function render() {
     ? '<span class="demo-flag">● Modo demonstração — dados de exemplo. Conecte seu token do Meta para ver dados reais.</span>'
     : "";
 
-  el("logout").style.display = data.auth ? "" : "none";
-
   renderDiagnostics(data);
 
-  // Agrega
-  let totalSpend = 0, totalLeads = 0, alertCampaigns = 0, alertAccounts = 0;
+  // Agrega (apenas gasto e nº de campanhas somam entre objetivos diferentes;
+  // "resultado" NAO e somavel no geral, pois mistura unidades distintas).
+  let totalSpend = 0, totalCampaigns = 0;
   for (const a of data.accounts) {
-    totalSpend += a.spend || 0; totalLeads += a.leads || 0;
-    const over = (a.campaigns||[]).filter(c => isOver(c, t)).length;
-    if (over > 0) alertAccounts++;
-    alertCampaigns += over;
+    totalSpend += a.spend || 0;
+    totalCampaigns += (a.campaigns || []).length;
   }
-  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : null;
 
   // KPIs
   el("kpis").innerHTML = `
@@ -618,36 +546,24 @@ function render() {
       <div class="k-value">${data.accounts.length}</div>
       <div class="k-sub">monitoradas em tempo real</div>
     </div>
-    <div class="kpi alert">
-      <div class="k-label">Campanhas em alerta</div>
-      <div class="k-value">${alertCampaigns}</div>
-      <div class="k-sub">em ${alertAccounts} ${alertAccounts===1?"conta":"contas"} · CPL &gt; R$ ${t.toFixed(0)} ou sem lead</div>
+    <div class="kpi">
+      <div class="k-label">Campanhas ativas</div>
+      <div class="k-value">${totalCampaigns}</div>
+      <div class="k-sub">somadas em todas as contas</div>
     </div>
     <div class="kpi">
       <div class="k-label">Investimento total</div>
       <div class="k-value" style="font-size:22px">${brl(totalSpend)}</div>
       <div class="k-sub">no período selecionado</div>
-    </div>
-    <div class="kpi">
-      <div class="k-label">Leads totais</div>
-      <div class="k-value">${int(totalLeads)}</div>
-      <div class="k-sub">soma de todas as contas</div>
-    </div>
-    <div class="kpi">
-      <div class="k-label">CPL médio geral</div>
-      <div class="k-value ${avgCpl!=null && avgCpl>t ? "" : ""}" style="font-size:22px;color:${avgCpl!=null && avgCpl>t ? "var(--alert)" : "var(--text)"}">${brl(avgCpl)}</div>
-      <div class="k-sub">gasto total ÷ leads totais</div>
     </div>`;
 
   // Filtros
   const q = el("search").value.trim().toLowerCase();
-  const onlyAlerts = el("onlyAlerts").checked;
-  const onlyOpt = el("onlyOpt").checked;
   const sort = el("sort").value;
 
   let accounts = data.accounts.map(a => {
-    const camps = (a.campaigns||[]).map(c => ({ ...c, over: isOver(c, t) }));
-    return { ...a, campaigns: camps, overCount: camps.filter(c=>c.over).length };
+    const camps = (a.campaigns || []).map(c => ({ ...c, over: false }));
+    return { ...a, campaigns: camps, overCount: 0 };
   });
 
   if (q) {
@@ -662,25 +578,8 @@ function render() {
     });
   }
 
-  if (onlyAlerts) {
-    accounts = accounts
-      .map(a => ({ ...a, campaigns: a.campaigns.filter(c => c.over) }))
-      .filter(a => a.campaigns.length > 0);
-  }
-
-  // "Só otimizações": apenas campanhas com mais de 1 conjunto LIGADO
-  // (ativo) — candidatas a otimizar desligando os conjuntos ruins.
-  if (onlyOpt) {
-    const activeAdsets = (c) => (c.adsets || []).filter(s => s.active).length;
-    accounts = accounts
-      .map(a => ({ ...a, campaigns: a.campaigns.filter(c => activeAdsets(c) > 1) }))
-      .filter(a => a.campaigns.length > 0);
-  }
-
-  accounts.sort((a,b) => {
-    if (sort === "alerts") return b.overCount - a.overCount || (b.cpl||0)-(a.cpl||0);
-    if (sort === "cpl")    return (b.cpl||0) - (a.cpl||0);
-    if (sort === "spend")  return (b.spend||0) - (a.spend||0);
+  accounts.sort((a, b) => {
+    if (sort === "spend") return (b.spend || 0) - (a.spend || 0);
     return a.name.localeCompare(b.name, "pt-BR");
   });
 
@@ -690,22 +589,6 @@ function render() {
   } else {
     list.innerHTML = accounts.map(a => accountCard(a, t)).join("");
   }
-
-  // Clique no ID da conta -> copia para a area de transferencia
-  list.querySelectorAll(".acc-id").forEach(el => {
-    el.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const id = el.dataset.accid;
-      const original = el.textContent;
-      try {
-        await navigator.clipboard.writeText(id);
-        el.textContent = "copiado!";
-      } catch (_) {
-        el.textContent = id; // sem permissao de clipboard: so mantem visivel
-      }
-      setTimeout(() => { el.textContent = original; }, 1200);
-    });
-  });
 
   // Toggle de expandir/recolher contas
   list.querySelectorAll(".acc-head").forEach(h => {
@@ -748,45 +631,17 @@ function render() {
   el("foot").textContent = `Atualizado em ${when}` + cacheTxt + (data.demo ? " · dados de exemplo" : "");
 }
 
-function fundsBar(a) {
-  if (a.fundsTotal == null) return ""; // pós-pago, sem dado
-  const pct = Math.min(a.fundsPct || 0, 100);
-  const remaining = a.fundsRemaining || 0;
-  // Verde até 40% consumido, amarelo até 80%, vermelho acima
-  const cls = pct < 40 ? "ok" : pct < 80 ? "warn" : "crit";
-  const label = pct >= 80
-    ? "⚠ Verba acabando"
-    : pct >= 40 ? "Verba" : "Verba";
-  return `
-    <div class="funds-bar-wrap">
-      <span class="funds-label">${label}</span>
-      <div class="funds-track">
-        <div class="funds-fill ${cls}" style="width:${pct.toFixed(1)}%"></div>
-      </div>
-      <div class="funds-values">
-        <span class="funds-remaining ${cls}">${brl(remaining)}</span>
-        <span class="funds-total"> / ${brl(a.fundsTotal)}</span>
-      </div>
-    </div>`;
-}
-
 function accountCard(a, t) {
   const collapsed = state.collapsed.has(a.id) ? "collapsed" : "";
-  const badge = a.overCount > 0
-    ? `<span class="badge-alert">▲ ${a.overCount} em alerta</span>`
-    : `<span class="badge-ok">✓ tudo no alvo</span>`;
-  const accCplColor = isOver(a, t) ? "var(--alert)" : "var(--text)";
 
   const rows = a.campaigns.map(c => {
     const dot = c.over ? '<span class="dot over"></span>' : "";
     const isOpen = state.expandedCampaigns.has(c.id);
     const adsets = c.adsets || [];
     const count = adsets.length;
-    const activeCount = adsets.filter(s => s.active).length;
     const countLabel = count
-      ? `<span class="adset-count">${count} ${count === 1 ? "conjunto" : "conjuntos"}${activeCount !== count ? ` · ${activeCount} ligado${activeCount === 1 ? "" : "s"}` : ""}</span>`
+      ? `<span class="adset-count">${count} ${count === 1 ? "conjunto" : "conjuntos"}</span>`
       : "";
-    const optTag = activeCount > 1 ? '<span class="opt-tag">otimizável</span>' : "";
 
     const adsetRows = adsets.map(s => {
       const sover = isOver(s, t);
@@ -810,8 +665,7 @@ function accountCard(a, t) {
             <div class="marker"></div>
             <div class="ad-name">${addot}${escapeHtml(ad.name)} ${ig}${adPaused}</div>
             <div class="cell-num">${brl(ad.spend)}</div>
-            <div class="cell-num leads-col">${int(ad.leads)}</div>
-            ${cplCell(ad, t)}
+            ${resultCell(ad)}
           </div>`;
       }).join("");
 
@@ -820,21 +674,19 @@ function accountCard(a, t) {
           <div class="marker"></div>
           <div class="adset-name"><span class="cc-chev">›</span>${sdot}${escapeHtml(s.name)}${pausedTag}${adsLabel}</div>
           <div class="cell-num">${brl(s.spend)}</div>
-          <div class="cell-num leads-col">${int(s.leads)}</div>
-          ${cplCell(s, t)}
+          ${resultCell(s)}
         </div>
         <div class="ad-wrap ${aOpen ? "open" : ""}" data-adwrap="${s.id}">${adRows}</div>`;
     }).join("");
 
-    const emptyMsg = `<div class="row"><div></div><div class="adset-name" style="color:var(--faint)">Sem conjuntos com dados no período.</div><div></div><div class="leads-col"></div><div></div></div>`;
+    const emptyMsg = `<div class="row"><div></div><div class="adset-name" style="color:var(--faint)">Sem conjuntos com dados no período.</div><div></div><div class="leads-col"></div></div>`;
 
     return `
       <div class="row camp-row ${c.over ? "over" : ""} ${isOpen ? "open-c" : ""}" data-cid="${c.id}">
         <div class="marker"></div>
-        <div class="camp-name"><span class="cc-chev">›</span>${dot}${escapeHtml(c.name)}${countLabel}${optTag}</div>
+        <div class="camp-name"><span class="cc-chev">›</span>${dot}${escapeHtml(c.name)}${countLabel}</div>
         <div class="cell-num">${brl(c.spend)}</div>
-        <div class="cell-num leads-col">${int(c.leads)}</div>
-        ${cplCell(c, t)}
+        ${resultCell(c)}
       </div>
       <div class="adset-wrap ${isOpen ? "open" : ""}" data-wrap="${c.id}">${adsetRows || emptyMsg}</div>`;
   }).join("");
@@ -844,25 +696,20 @@ function accountCard(a, t) {
       <div class="acc-head" data-id="${a.id}">
         <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
         <span class="acc-name">${escapeHtml(a.name)}</span>
-        <span class="acc-id" data-accid="${escapeHtml(a.id)}" title="Clique para copiar o ID">${escapeHtml(a.id)}</span>
         ${a.docUrl ? `<a class="doc-link" href="${escapeHtml(a.docUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir notas da conta">📄 Notas</a>` : ""}
         <div class="acc-meta">
-          <div class="acc-stat hide-sm"><div class="v">${brl(a.spend)}</div><div class="l">investido</div></div>
-          <div class="acc-stat hide-sm"><div class="v">${int(a.leads)}</div><div class="l">leads</div></div>
-          <div class="acc-stat"><div class="v" style="color:${accCplColor}">${brl(a.cpl)}</div><div class="l">CPL médio</div></div>
-          ${badge}
+          <div class="acc-stat"><div class="v">${brl(a.spend)}</div><div class="l">investido</div></div>
+          <div class="acc-stat hide-sm"><div class="v">${int((a.campaigns || []).length)}</div><div class="l">campanhas</div></div>
         </div>
       </div>
       <div class="camp-table">
         <div class="row head">
           <div></div><div>Campanha / conjunto / anúncio</div>
           <div style="text-align:right">Investido</div>
-          <div style="text-align:right" class="leads-col">Leads</div>
-          <div style="text-align:right">CPL</div>
+          <div style="text-align:right" class="leads-col">Resultado</div>
         </div>
         ${rows}
       </div>
-      ${fundsBar(a)}
     </div>`;
 }
 
@@ -874,13 +721,8 @@ function escapeHtml(s) {
 //  Eventos
 // ---------------------------------------------------------------
 el("refresh").addEventListener("click", () => load(true));
-el("logout").addEventListener("click", async () => {
-  try { await fetch("/api/logout", { method: "POST" }); } catch (_) {}
-  location.href = "/login";
-});
 el("range").addEventListener("change", () => load(false));
-["search","onlyAlerts","onlyOpt","sort"].forEach(id => el(id).addEventListener("input", render));
-el("threshold").addEventListener("input", render);
+["search", "sort"].forEach(id => el(id).addEventListener("input", render));
 
 load();
 </script>

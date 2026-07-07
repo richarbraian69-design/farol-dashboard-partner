@@ -85,21 +85,6 @@ Abra **http://localhost:3000**. Agora os números são das suas contas reais. A 
 
 ---
 
-## Login (proteger o painel)
-
-Por padrão a URL é pública. Para exigir usuário e senha, defina **três variáveis** (no `.env` local ou nas variáveis da Render):
-
-```
-AUTH_USER=seu_usuario
-AUTH_PASSWORD=uma_senha_forte
-SESSION_SECRET=um_texto_longo_e_aleatorio
-```
-
-- Com `AUTH_USER` e `AUTH_PASSWORD` preenchidos, o painel passa a mostrar uma **tela de login**; a página e a API de dados ficam protegidas.
-- `SESSION_SECRET` assina o cookie de sessão. Use algo longo e aleatório (gere com: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Se não definir, um é gerado a cada reinício (você terá que logar de novo após cada deploy).
-- A sessão dura 7 dias. Há um botão **Sair** no topo do painel.
-- Se as variáveis ficarem vazias, o painel continua aberto (sem login) — útil para testes locais.
-
 ## Links de notas por conta (Google Docs)
 
 Você pode exibir, em cada conta, um link para um documento (Google Docs ou qualquer URL) onde anotou detalhes do cliente.

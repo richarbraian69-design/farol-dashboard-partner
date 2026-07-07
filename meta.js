@@ -1,10 +1,12 @@
 // =============================================================
-//  meta.js - Conexao com a Meta Marketing API e calculo de CPL
+//  meta.js - Conexao com a Meta Marketing API
 // =============================================================
 //  Este modulo concentra TODA a logica de:
 //   1) descobrir as contas de anuncio do token
-//   2) puxar as campanhas e metricas (gasto + leads) de cada conta
-//   3) calcular o custo por lead (CPL) de cada campanha
+//   2) puxar as campanhas e metricas de cada conta
+//   3) derivar o "resultado" de cada campanha conforme o OBJETIVO
+//      (videoview -> visualizacoes, mensagem -> conversas iniciadas,
+//       engajamento -> engajamentos, lead -> leads, etc.)
 //   4) gerar dados de exemplo quando nao ha token (modo demo)
 // =============================================================
 
@@ -68,6 +70,82 @@ function countLeads(actions, leadTypes) {
   return max;
 }
 
+// Le o valor de um action_type especifico dentro do array de actions.
+function actionValue(actions, type) {
+  if (!Array.isArray(actions)) return 0;
+  for (const a of actions) if (a.action_type === type) return num(a.value);
+  return 0;
+}
+
+// action_type da Meta para "conversas iniciadas por mensagem".
+const MSG_TYPE = "onsite_conversion.messaging_conversation_started_7d";
+
+// Deriva o "resultado" de uma linha de insights conforme o objetivo.
+// A coluna "Resultados" do Ads Manager depende do objetivo de OTIMIZACAO
+// do conjunto (optimization_goal); usamos ele como sinal principal e o
+// objetivo da CAMPANHA (objective) como reforco. Retorna { type, value },
+// onde `type` e uma chave canonica que a interface traduz em rotulo
+// ("views", "conversas", "engaj.", "leads", "cliques", "impressoes").
+// `value` e sempre um numero SOMAVEL (por isso usamos impressoes, e nao
+// alcance, para objetivos de reconhecimento — alcance nao soma entre linhas).
+function deriveResult(ins, goal, objective, leadTypes) {
+  const A = ins.actions;
+  const g = String(goal || "").toUpperCase();
+  const o = String(objective || "").toUpperCase();
+
+  const leads = countLeads(A, leadTypes);
+  const messaging = actionValue(A, MSG_TYPE);
+  const engagement = actionValue(A, "post_engagement");
+  const clicks = actionValue(A, "link_click");
+  const thruplay = num(ins.video_thruplay_watched_actions?.[0]?.value);
+  const video = thruplay || actionValue(A, "video_view");
+  const impressions = num(ins.impressions);
+  const purchases =
+    actionValue(A, "purchase") ||
+    actionValue(A, "onsite_conversion.purchase") ||
+    actionValue(A, "offsite_conversion.fb_pixel_purchase");
+  const R = (type, value) => ({ type, value: value || 0 });
+
+  // 1) Pelo optimization_goal do conjunto (sinal mais confiavel).
+  if (g === "THRUPLAY" || g === "VIDEO_VIEWS") return R("video", video);
+  if (g === "CONVERSATIONS" || g.startsWith("MESSAGING")) return R("messaging", messaging);
+  if (["POST_ENGAGEMENT", "PROFILE_AND_PAGE_ENGAGEMENT", "ENGAGED_USERS", "PAGE_LIKES", "EVENT_RESPONSES"].includes(g))
+    return R("engagement", engagement);
+  if (g === "LEAD_GENERATION" || g === "QUALITY_LEAD") return R("leads", leads);
+  if (g === "LINK_CLICKS") return R("clicks", clicks);
+  if (g === "LANDING_PAGE_VIEWS") return R("clicks", actionValue(A, "landing_page_view") || clicks);
+  if (["REACH", "IMPRESSIONS", "AD_RECALL_LIFT"].includes(g)) return R("impressions", impressions);
+  if (g === "OFFSITE_CONVERSIONS" || g === "VALUE") return R("other", purchases || leads);
+
+  // 2) Reforco pelo objetivo da campanha.
+  if (o.includes("VIDEO")) return R("video", video);
+  if (o.includes("MESSAG")) return R("messaging", messaging);
+  if (o === "OUTCOME_TRAFFIC" || o === "TRAFFIC" || o === "LINK_CLICKS") return R("clicks", clicks);
+  if (o === "OUTCOME_LEADS" || o === "LEAD_GENERATION") return R("leads", leads);
+  if (o.includes("AWARENESS") || o === "REACH") return R("impressions", impressions);
+  if (o.includes("SALES") || o === "CONVERSIONS") return R("other", purchases || leads);
+
+  // 3) Heuristica: quando o objetivo e ambiguo (ex.: OUTCOME_ENGAGEMENT
+  //    abrange video, mensagem e engajamento), escolhe o maior sinal real.
+  const cand = [
+    ["leads", leads], ["messaging", messaging], ["video", video],
+    ["engagement", engagement], ["clicks", clicks],
+  ].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  if (cand.length) return R(cand[0][0], cand[0][1]);
+  if (impressions > 0) return R("impressions", impressions);
+  return R("other", 0);
+}
+
+// Consolida o resultado de varios filhos: soma os valores e define o tipo.
+// Se todos os filhos compartilham o mesmo tipo, mantem; se divergem (raro
+// dentro de uma campanha), marca "misto".
+function rollupResult(children) {
+  const types = new Set(children.map((c) => c.resultType).filter(Boolean));
+  const resultType = types.size === 1 ? [...types][0] : (types.size === 0 ? "other" : "misto");
+  const result = children.reduce((x, c) => x + (c.result || 0), 0);
+  return { result, resultType };
+}
+
 async function fetchJson(url) {
   const res = await fetch(url);
   const data = await res.json();
@@ -83,9 +161,8 @@ async function fetchJson(url) {
 // Busca, com paginacao, todas as contas de anuncio de UM token.
 // Cada conta e marcada com o token que a encontrou (_token), para
 // que depois saibamos qual credencial usar ao buscar as campanhas.
-// Tambem ja traz os campos de saldo: spend_cap e amount_spent.
 async function listAdAccounts(token, version) {
-  const fields = "name,account_id,account_status,currency,spend_cap,amount_spent,balance";
+  const fields = "name,account_id,account_status,currency";
   let url =
     `${GRAPH(version)}/me/adaccounts?fields=${fields}` +
     `&limit=200&access_token=${encodeURIComponent(token)}`;
@@ -104,15 +181,17 @@ async function listAdAccounts(token, version) {
 // seus status) e os insights do periodo — tudo aninhado. Com isso, em
 // UMA chamada por conta, montamos a arvore completa:
 //   campanha (so ativas) -> conjunto (ativos + pausados) -> anuncio
-// Cada nivel recebe seus proprios totais (gasto, leads, CPL).
+// Cada nivel recebe seus proprios totais (gasto e resultado).
 async function fetchAccountCampaigns(account, config) {
   const { version, datePreset, leadTypes } = config;
   const token = account._token || config.token;
-  const insightsSub = `insights.date_preset(${datePreset}){spend,actions}`;
+  const insightsSub =
+    `insights.date_preset(${datePreset})` +
+    `{spend,impressions,actions,video_thruplay_watched_actions}`;
   const fields =
     `name,effective_status,` +
-    `adset{id,name,effective_status},` +
-    `campaign{id,name,effective_status},` +
+    `adset{id,name,effective_status,optimization_goal},` +
+    `campaign{id,name,effective_status,objective},` +
     `creative{instagram_permalink_url,effective_instagram_media_id},` +
     insightsSub;
   let next =
@@ -140,8 +219,8 @@ async function fetchAccountCampaigns(account, config) {
     const ins = row.insights?.data?.[0];
     if (!ins) continue; // anuncio sem entrega no periodo -> ignora
     const spend = num(ins.spend);
-    const leads = countLeads(ins.actions, leadTypes);
-    if (spend <= 0 && leads <= 0) continue; // sem atividade real
+    const r = deriveResult(ins, as.optimization_goal, camp.objective, leadTypes);
+    if (spend <= 0 && r.value <= 0) continue; // sem atividade real
 
     const ad = {
       id: row.id,
@@ -149,12 +228,17 @@ async function fetchAccountCampaigns(account, config) {
       active: row.effective_status === "ACTIVE",
       instagramUrl: row.creative?.instagram_permalink_url || null,
       spend,
-      leads,
-      cpl: leads > 0 ? spend / leads : null,
+      result: r.value,
+      resultType: r.type,
     };
 
     if (!campMap.has(camp.id)) {
-      campMap.set(camp.id, { id: camp.id, name: camp.name, adsetMap: new Map() });
+      campMap.set(camp.id, {
+        id: camp.id,
+        name: camp.name,
+        objective: camp.objective || null,
+        adsetMap: new Map(),
+      });
     }
     const cEntry = campMap.get(camp.id);
     if (!cEntry.adsetMap.has(as.id)) {
@@ -172,47 +256,31 @@ async function fetchAccountCampaigns(account, config) {
   const campaigns = [...campMap.values()].map((c) => {
     const adsets = [...c.adsetMap.values()].map((s) => {
       const spend = s.ads.reduce((x, a) => x + a.spend, 0);
-      const leads = s.ads.reduce((x, a) => x + a.leads, 0);
+      const { result, resultType } = rollupResult(s.ads);
       return {
         id: s.id,
         name: s.name,
         active: s.active,
         spend,
-        leads,
-        cpl: leads > 0 ? spend / leads : null,
+        result,
+        resultType,
         ads: s.ads,
       };
     });
     const spend = adsets.reduce((x, s) => x + s.spend, 0);
-    const leads = adsets.reduce((x, s) => x + s.leads, 0);
-    return { id: c.id, name: c.name, spend, leads, cpl: leads > 0 ? spend / leads : null, adsets };
+    const { result, resultType } = rollupResult(adsets);
+    return { id: c.id, name: c.name, spend, result, resultType, adsets };
   });
 
   const spend = campaigns.reduce((s, c) => s + c.spend, 0);
-  const leads = campaigns.reduce((s, c) => s + c.leads, 0);
-  // Calcula o saldo de fundos pre-pagos quando disponivel.
-  // spend_cap e amount_spent vem em centavos (sem virgula), entao
-  // dividimos por 100 para obter o valor real na moeda da conta.
-  // Contas pos-pagas nao tem spend_cap definido (null ou "0").
-  const spendCap = num(account.spend_cap);
-  const amountSpent = num(account.amount_spent);
-  const fundsTotal = spendCap > 0 ? spendCap / 100 : null;
-  const fundsSpent = spendCap > 0 ? amountSpent / 100 : null;
-  const fundsRemaining = fundsTotal != null ? fundsTotal - fundsSpent : null;
-  const fundsPct = fundsTotal > 0 ? (fundsSpent / fundsTotal) * 100 : null;
-
+  const { result, resultType } = rollupResult(campaigns);
   return {
     id: account.id,
     name: account.name || account.id,
     currency: account.currency || "BRL",
     spend,
-    leads,
-    cpl: leads > 0 ? spend / leads : null,
-    // Saldo de fundos (null = conta pos-paga, sem dado disponivel)
-    fundsTotal,
-    fundsSpent,
-    fundsRemaining,
-    fundsPct,
+    result,
+    resultType,
     campaigns,
   };
 }
@@ -232,8 +300,8 @@ async function inBatches(items, size, worker) {
           error: r.reason?.message || "Falha ao carregar a conta",
           campaigns: [],
           spend: 0,
-          leads: 0,
-          cpl: null,
+          result: 0,
+          resultType: "other",
         });
     });
   }
@@ -345,21 +413,27 @@ export async function getDashboardData({
 // -------------------------------------------------------------
 //  DADOS DE EXEMPLO (modo demo)
 // -------------------------------------------------------------
-function buildDemoData({ threshold }) {
+function buildDemoData() {
   const clientes = [
-    "Clinica OdontoVita", "Imobiliaria Horizonte", "Auto Escola Pioneira",
-    "Estetica Bella Pelle", "Curso Aprova Mais", "Academia CorpoForte",
-    "Advocacia Mendes & Cia", "Pet Shop Patinhas", "Restaurante Sabor da Serra",
-    "Construtora Alicerce", "Salao Studio Vip", "Faculdade Saber+",
-    "Consultorio Dr. Lima", "Loja Solar Energia", "Financeira CrediFacil",
-    "Buffet Festa Boa", "Otica Visao Clara", "Marcenaria Madeira Nobre",
-    "Seguros ProtegeBem", "Spa Recanto Zen",
+    "Clinica Face Harmonia", "Estetica Bella Pelle", "Studio Lorena Bevilaqua",
+    "Instituto Renova Estetica", "Clinica Vittalis", "Espaco Derme & Arte",
+    "Harmoniza Odonto & Face", "Clinica Dra. Paula Reis", "Belle Ame Estetica",
+    "Studio Facial Prime", "Clinica NovaPele", "Espaco Rejuvenesce",
+    "Instituto Sublime", "Clinica Essence", "Derma Studio Aurora",
+    "Clinica Lumiere", "Face & Forma", "Studio Beleza Real",
+    "Clinica Vitta Estetica", "Espaco Zenith",
   ];
 
-  const tiposCampanha = [
-    "Captacao - Trafego Frio", "Remarketing - Site", "Lookalike 1%",
-    "Promo Mensal", "Interesses - Geral", "Video View -> Lead",
-    "Formulario Instantaneo", "Black Friday",
+  // Cada tipo de campanha reflete um objetivo diferente. O `type` e a chave
+  // canonica que a interface traduz em rotulo; o intervalo define a ordem de
+  // grandeza plausivel do resultado por anuncio.
+  const DEMO_TYPES = [
+    { type: "video",       name: "Videoview - Institucional",  min: 200,  max: 2500 },
+    { type: "messaging",   name: "Mensagens - WhatsApp",       min: 4,    max: 40 },
+    { type: "engagement",  name: "Engajamento - Reels",        min: 80,   max: 900 },
+    { type: "leads",       name: "Leads - Avaliacao",          min: 2,    max: 25 },
+    { type: "clicks",      name: "Trafego - Agendamento",      min: 20,   max: 260 },
+    { type: "impressions", name: "Alcance - Regiao",           min: 2000, max: 30000 },
   ];
 
   // Gerador pseudo-aleatorio com semente fixa: dados estaveis a cada carga.
@@ -369,9 +443,10 @@ function buildDemoData({ threshold }) {
     return seed / 0x7fffffff;
   };
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+  const inRange = (t) => t.min + Math.floor(rand() * (t.max - t.min));
   const segmentos = [
-    "18-24 · RJ", "25-34 · SP", "35-44 · BR", "Lookalike 1%",
-    "Interesses A", "Interesses B", "Retargeting 7d", "Aberto",
+    "18-24 · Cidade", "25-34 · Regiao", "35-44 · BR", "Lookalike 1%",
+    "Interesses - Estetica", "Retargeting 7d", "Aberto", "Mulheres 30-50",
   ];
 
   const accounts = clientes.map((nome, i) => {
@@ -379,84 +454,60 @@ function buildDemoData({ threshold }) {
     const usados = new Set();
     const campaigns = [];
     for (let c = 0; c < nCamp; c++) {
-      let tipo = pick(tiposCampanha);
-      while (usados.has(tipo)) tipo = pick(tiposCampanha);
-      usados.add(tipo);
+      let ct = pick(DEMO_TYPES);
+      while (usados.has(ct.name)) ct = pick(DEMO_TYPES);
+      usados.add(ct.name);
 
-      // Cada campanha tem de 1 a 3 conjuntos.
       const nAdsets = 1 + Math.floor(rand() * 3);
       const adsets = [];
       for (let a = 0; a < nAdsets; a++) {
-        const paused = rand() < 0.25; // ~1/4 dos conjuntos pausados
-        // Cada conjunto tem de 1 a 3 anuncios.
+        const paused = rand() < 0.25;
         const nAds = 1 + Math.floor(rand() * 3);
         const ads = [];
         for (let d = 0; d < nAds; d++) {
           const adPaused = rand() < 0.25;
-          let leads, cpl, sp;
-          if (rand() < 0.12) {
-            leads = 0;
-            sp = +(35 + rand() * 50).toFixed(2);
-            cpl = null;
-          } else {
-            leads = 1 + Math.floor(rand() * 25);
-            cpl = 13 + rand() * rand() * 72;
-            sp = +(cpl * leads).toFixed(2);
-          }
-          const hasIg = rand() < 0.8;
+          // ~12% dos anuncios gastaram sem gerar resultado no periodo.
+          const dead = rand() < 0.12;
+          const result = dead ? 0 : inRange(ct);
+          const spend = +(25 + rand() * 260).toFixed(2);
           ads.push({
             id: `demo_ad_${i}_${c}_${a}_${d}`,
             name: `Criativo ${d + 1} — ${pick(["Vídeo", "Imagem", "Carrossel"])}`,
             active: !adPaused,
-            instagramUrl: hasIg ? "https://www.instagram.com/p/EXEMPLO123/" : null,
-            spend: sp,
-            leads,
-            cpl: cpl != null ? +cpl.toFixed(2) : null,
+            instagramUrl: rand() < 0.8 ? "https://www.instagram.com/p/EXEMPLO123/" : null,
+            spend,
+            result,
+            resultType: ct.type,
           });
         }
-        const aspend = +ads.reduce((s, x) => s + x.spend, 0).toFixed(2);
-        const aleads = ads.reduce((s, x) => s + x.leads, 0);
         adsets.push({
           id: `demo_a_${i}_${c}_${a}`,
           name: pick(segmentos),
           active: !paused,
-          spend: aspend,
-          leads: aleads,
-          cpl: aleads > 0 ? +(aspend / aleads).toFixed(2) : null,
+          spend: +ads.reduce((s, x) => s + x.spend, 0).toFixed(2),
+          result: ads.reduce((s, x) => s + x.result, 0),
+          resultType: ct.type,
           ads,
         });
       }
-      const spend = +adsets.reduce((s, x) => s + x.spend, 0).toFixed(2);
-      const leads = adsets.reduce((s, x) => s + x.leads, 0);
       campaigns.push({
         id: `demo_c_${i}_${c}`,
-        name: tipo,
-        spend,
-        leads,
-        cpl: leads > 0 ? +(spend / leads).toFixed(2) : null,
+        name: ct.name,
+        spend: +adsets.reduce((s, x) => s + x.spend, 0).toFixed(2),
+        result: adsets.reduce((s, x) => s + x.result, 0),
+        resultType: ct.type,
         adsets,
       });
     }
-    const spend = campaigns.reduce((s, x) => s + x.spend, 0);
-    const leads = campaigns.reduce((s, x) => s + x.leads, 0);
-    // ~60% das contas demo são pré-pagas, ~40% pós-pagas.
-    const isPrepaid = rand() < 0.6;
-    const fundsTotal = isPrepaid ? +(500 + rand() * 4500).toFixed(2) : null;
-    const fundsSpent = isPrepaid ? +(fundsTotal * (0.2 + rand() * 0.85)).toFixed(2) : null;
-    const fundsRemaining = isPrepaid ? +(fundsTotal - fundsSpent).toFixed(2) : null;
-    const fundsPct = isPrepaid ? (fundsSpent / fundsTotal) * 100 : null;
+    const types = new Set(campaigns.map((x) => x.resultType));
     return {
       id: `act_demo_${i}`,
       name: nome,
       currency: "BRL",
       docUrl: i % 4 === 0 ? "https://docs.google.com/document/d/EXEMPLO" : null,
-      spend: +spend.toFixed(2),
-      leads,
-      cpl: leads > 0 ? +(spend / leads).toFixed(2) : null,
-      fundsTotal,
-      fundsSpent,
-      fundsRemaining,
-      fundsPct,
+      spend: +campaigns.reduce((s, x) => s + x.spend, 0).toFixed(2),
+      result: campaigns.reduce((s, x) => s + x.result, 0),
+      resultType: types.size === 1 ? [...types][0] : "misto",
       campaigns,
     };
   });
