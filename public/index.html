@@ -467,6 +467,7 @@ function costCell(x) {
 function embeddedDemo() {
   const clientes = ["Clínica Face Harmonia","Estética Bella Pelle","Studio Lorena Bevilaqua","Instituto Renova Estética","Clínica Vittalis","Espaço Derme & Arte","Harmoniza Odonto & Face","Clínica Dra. Paula Reis","Belle Âme Estética","Studio Facial Prime","Clínica NovaPele","Espaço Rejuvenesce","Instituto Sublime","Clínica Essence","Derma Studio Aurora","Clínica Lumière","Face & Forma","Studio Beleza Real","Clínica Vitta Estética","Espaço Zenith"];
   const TYPES = [
+    { type:"contact",     name:"Contato pelo site (TINTIM)", min:1,    max:12 },
     { type:"video",       name:"Videoview - Institucional", min:200,  max:2500 },
     { type:"messaging",   name:"Mensagens - WhatsApp",      min:4,    max:40 },
     { type:"engagement",  name:"Engajamento - Reels",       min:80,   max:900 },
@@ -587,7 +588,7 @@ function isOver() {
 // (definida no backend) vira um rotulo curto aqui.
 const RESULT_LABELS = {
   video: "views", messaging: "conversas", engagement: "engaj.",
-  leads: "leads", clicks: "cliques", impressions: "impressões",
+  leads: "leads", contact: "contatos", clicks: "cliques", impressions: "impressões",
   other: "resultados", misto: "resultados",
 };
 function resultCell(x) {

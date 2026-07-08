@@ -59,10 +59,18 @@ function num(v) {
 // 2x ou mais). Por isso pegamos o MAIOR valor entre os tipos de lead
 // configurados: ele corresponde ao total ja deduplicado do Meta.
 function countLeads(actions, leadTypes) {
+  return maxAction(actions, leadTypes);
+}
+
+// Pega o MAIOR valor entre um conjunto de action_types. O Meta reporta o
+// mesmo evento sob varios tipos que se sobrepoem (ex.: um lead aparece como
+// "lead" E "onsite_conversion.lead_grouped" com o mesmo valor); somar infla,
+// entao pegamos o maximo — que corresponde ao total ja deduplicado.
+function maxAction(actions, types) {
   if (!Array.isArray(actions)) return 0;
   let max = 0;
   for (const a of actions) {
-    if (leadTypes.includes(a.action_type)) {
+    if (types.includes(a.action_type)) {
       const v = num(a.value);
       if (v > max) max = v;
     }
@@ -80,6 +88,16 @@ function actionValue(actions, type) {
 // action_type da Meta para "conversas iniciadas por mensagem".
 const MSG_TYPE = "onsite_conversion.messaging_conversation_started_7d";
 
+// Tipos do evento padrao "Contact" do pixel (Contato pelo site). Pode aparecer
+// como o tipo do pixel e/ou agrupado; pegamos o maximo para nao duplicar.
+const CONTACT_TYPES_DEFAULT = [
+  "offsite_conversion.fb_pixel_contact",
+  "onsite_conversion.contact",
+  "contact_total",
+  "contact_website",
+  "contact",
+];
+
 // Deriva o "resultado" de uma linha de insights conforme o objetivo.
 // A coluna "Resultados" do Ads Manager depende do objetivo de OTIMIZACAO
 // do conjunto (optimization_goal); usamos ele como sinal principal e o
@@ -88,12 +106,13 @@ const MSG_TYPE = "onsite_conversion.messaging_conversation_started_7d";
 // ("views", "conversas", "engaj.", "leads", "cliques", "impressoes").
 // `value` e sempre um numero SOMAVEL (por isso usamos impressoes, e nao
 // alcance, para objetivos de reconhecimento — alcance nao soma entre linhas).
-function deriveResult(ins, goal, objective, leadTypes) {
+function deriveResult(ins, goal, objective, leadTypes, contactTypes) {
   const A = ins.actions;
   const g = String(goal || "").toUpperCase();
   const o = String(objective || "").toUpperCase();
 
   const leads = countLeads(A, leadTypes);
+  const contacts = maxAction(A, contactTypes || CONTACT_TYPES_DEFAULT);
   const messaging = actionValue(A, MSG_TYPE);
   const engagement = actionValue(A, "post_engagement");
   const clicks = actionValue(A, "link_click");
@@ -106,30 +125,39 @@ function deriveResult(ins, goal, objective, leadTypes) {
     actionValue(A, "offsite_conversion.fb_pixel_purchase");
   const R = (type, value) => ({ type, value: value || 0 });
 
+  // Para objetivos de conversao, o evento otimizado pode ser lead, contato
+  // (Contact do pixel) ou compra. Escolhe o maior sinal real entre eles.
+  const pickConversion = () => {
+    const conv = [["leads", leads], ["contact", contacts], ["other", purchases]]
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1]);
+    return conv.length ? R(conv[0][0], conv[0][1]) : null;
+  };
+
   // 1) Pelo optimization_goal do conjunto (sinal mais confiavel).
   if (g === "THRUPLAY" || g === "VIDEO_VIEWS") return R("video", video);
   if (g === "CONVERSATIONS" || g.startsWith("MESSAGING")) return R("messaging", messaging);
   if (["POST_ENGAGEMENT", "PROFILE_AND_PAGE_ENGAGEMENT", "ENGAGED_USERS", "PAGE_LIKES", "EVENT_RESPONSES"].includes(g))
     return R("engagement", engagement);
-  if (g === "LEAD_GENERATION" || g === "QUALITY_LEAD") return R("leads", leads);
+  if (g === "LEAD_GENERATION" || g === "QUALITY_LEAD") return pickConversion() || R("leads", 0);
   if (g === "LINK_CLICKS") return R("clicks", clicks);
   if (g === "LANDING_PAGE_VIEWS") return R("clicks", actionValue(A, "landing_page_view") || clicks);
   if (["REACH", "IMPRESSIONS", "AD_RECALL_LIFT"].includes(g)) return R("impressions", impressions);
-  if (g === "OFFSITE_CONVERSIONS" || g === "VALUE") return R("other", purchases || leads);
+  if (g === "OFFSITE_CONVERSIONS" || g === "VALUE") return pickConversion() || R("other", 0);
 
   // 2) Reforco pelo objetivo da campanha.
   if (o.includes("VIDEO")) return R("video", video);
   if (o.includes("MESSAG")) return R("messaging", messaging);
   if (o === "OUTCOME_TRAFFIC" || o === "TRAFFIC" || o === "LINK_CLICKS") return R("clicks", clicks);
-  if (o === "OUTCOME_LEADS" || o === "LEAD_GENERATION") return R("leads", leads);
+  if (o === "OUTCOME_LEADS" || o === "LEAD_GENERATION") return pickConversion() || R("leads", 0);
   if (o.includes("AWARENESS") || o === "REACH") return R("impressions", impressions);
-  if (o.includes("SALES") || o === "CONVERSIONS") return R("other", purchases || leads);
+  if (o.includes("SALES") || o === "CONVERSIONS") return pickConversion() || R("other", 0);
 
   // 3) Heuristica: quando o objetivo e ambiguo (ex.: OUTCOME_ENGAGEMENT
   //    abrange video, mensagem e engajamento), escolhe o maior sinal real.
   const cand = [
-    ["leads", leads], ["messaging", messaging], ["video", video],
-    ["engagement", engagement], ["clicks", clicks],
+    ["leads", leads], ["contact", contacts], ["messaging", messaging],
+    ["video", video], ["engagement", engagement], ["clicks", clicks],
   ].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   if (cand.length) return R(cand[0][0], cand[0][1]);
   if (impressions > 0) return R("impressions", impressions);
@@ -183,7 +211,7 @@ async function listAdAccounts(token, version) {
 //   campanha (so ativas) -> conjunto (ativos + pausados) -> anuncio
 // Cada nivel recebe seus proprios totais (gasto e resultado).
 async function fetchAccountCampaigns(account, config) {
-  const { version, datePreset, leadTypes } = config;
+  const { version, datePreset, leadTypes, contactTypes } = config;
   const token = account._token || config.token;
   const insightsSub =
     `insights.date_preset(${datePreset})` +
@@ -219,7 +247,7 @@ async function fetchAccountCampaigns(account, config) {
     const ins = row.insights?.data?.[0];
     if (!ins) continue; // anuncio sem entrega no periodo -> ignora
     const spend = num(ins.spend);
-    const r = deriveResult(ins, as.optimization_goal, camp.objective, leadTypes);
+    const r = deriveResult(ins, as.optimization_goal, camp.objective, leadTypes, contactTypes);
     if (spend <= 0 && r.value <= 0) continue; // sem atividade real
 
     const ad = {
@@ -333,12 +361,19 @@ export async function getDashboardData({
     .map((s) => s.trim())
     .filter(Boolean);
 
+  const contactTypes = (
+    process.env.CONTACT_ACTION_TYPES || CONTACT_TYPES_DEFAULT.join(",")
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   // Nenhum token -> modo demonstracao.
   if (!tokens.length) {
     return { demo: true, ...buildDemoData({ threshold }), threshold, datePreset };
   }
 
-  const config = { version, datePreset, leadTypes };
+  const config = { version, datePreset, leadTypes, contactTypes };
   const notices = [];
 
   // Resolve quais contas consultar.
@@ -428,6 +463,7 @@ function buildDemoData() {
   // canonica que a interface traduz em rotulo; o intervalo define a ordem de
   // grandeza plausivel do resultado por anuncio.
   const DEMO_TYPES = [
+    { type: "contact",     name: "Contato pelo site (TINTIM)",  min: 1,    max: 12 },
     { type: "video",       name: "Videoview - Institucional",  min: 200,  max: 2500 },
     { type: "messaging",   name: "Mensagens - WhatsApp",       min: 4,    max: 40 },
     { type: "engagement",  name: "Engajamento - Reels",        min: 80,   max: 900 },
