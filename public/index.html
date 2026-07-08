@@ -21,6 +21,8 @@
     --warn:      #FBBF24;
     --alert:     #FF5B6E;
     --alert-bg:  rgba(255,91,110,0.10);
+    --ok-bg:     rgba(52,211,153,0.10);
+    --warn-bg:   rgba(251,191,36,0.10);
     --radius:    14px;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
     --sans: "Inter", system-ui, sans-serif;
@@ -170,6 +172,22 @@
   .chev { color: var(--faint); transition: transform .18s; flex: none; }
   .account.collapsed .chev { transform: rotate(-90deg); }
   .acc-name { font-family: var(--disp); font-weight: 600; font-size: 15.5px; }
+  .acc-eye {
+    background: none; border: none; padding: 3px; margin: 0; cursor: pointer;
+    color: var(--faint); display: inline-flex; align-items: center; border-radius: 6px; flex: none;
+  }
+  .acc-eye:hover { color: var(--text); background: var(--surface-2); }
+  .hidden-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin: -4px 0 16px; font-size: 12.5px;
+  }
+  .hidden-bar .hb-label { color: var(--faint); }
+  .hidden-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    padding: 4px 10px; border-radius: 999px; cursor: pointer; font-size: 12.5px; font-family: var(--sans);
+  }
+  .hidden-chip:hover { color: var(--text); border-color: var(--accent); }
   .acc-meta { margin-left: auto; display: flex; align-items: center; gap: 22px; }
   .acc-stat { text-align: right; }
   .acc-stat .v { font-family: var(--mono); font-size: 14px; font-weight: 500; }
@@ -189,7 +207,7 @@
   .account.collapsed .camp-table { display: none; }
   .row {
     display: grid;
-    grid-template-columns: 16px 1fr 110px 130px;
+    grid-template-columns: 16px 1fr 100px 118px 108px;
     gap: 14px; align-items: center;
     padding: 11px 18px; border-top: 1px solid rgba(43,56,80,.5);
     font-size: 13.5px;
@@ -208,6 +226,17 @@
   .result .rv { font-weight: 600; }
   .result .ru { font-family: var(--sans); font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
   .result.none { color: var(--faint); font-weight: 400; }
+  .cost { font-family: var(--mono); text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cost.green  { color: var(--ok); }
+  .cost.yellow { color: var(--warn); }
+  .cost.red    { color: var(--alert); }
+  /* Grifa da campanha por custo por resultado */
+  .row.camp-row.flag-green  { background: var(--ok-bg); }
+  .row.camp-row.flag-yellow { background: var(--warn-bg); }
+  .row.camp-row.flag-red    { background: var(--alert-bg); }
+  .row.camp-row.flag-green .marker  { background: var(--ok); }
+  .row.camp-row.flag-yellow .marker { background: var(--warn); }
+  .row.camp-row.flag-red .marker    { background: var(--alert); }
   .dot {
     display: inline-block; width: 7px; height: 7px; border-radius: 50%;
     margin-right: 6px; vertical-align: middle;
@@ -314,7 +343,8 @@
     .kpis { grid-template-columns: repeat(2, 1fr); }
     .acc-meta { gap: 12px; }
     .acc-stat.hide-sm { display: none; }
-    .row { grid-template-columns: 14px 1fr 82px 104px; }
+    .row { grid-template-columns: 12px 1fr 92px 84px; }
+    .row .spend-col { display: none; }
   }
 </style>
 </head>
@@ -361,7 +391,14 @@
       <option value="spend" selected>Ordenar: maior investimento</option>
       <option value="name">Ordenar: nome (A–Z)</option>
     </select>
+    <label class="toggle">
+      <input type="checkbox" id="onlyRed" />
+      <span class="switch"></span>
+      Só campanhas em vermelho
+    </label>
   </div>
+
+  <div class="hidden-bar" id="hiddenBar"></div>
 
   <main id="list">
     <div class="loading"><div class="spinner"></div>Carregando contas…</div>
@@ -374,7 +411,23 @@
 // ---------------------------------------------------------------
 //  Estado e formatadores
 // ---------------------------------------------------------------
-const state = { data: null, collapsed: new Set(), expandedCampaigns: new Set(), expandedAdsets: new Set() };
+// Carrega/salva as contas ocultas no navegador (persiste entre recargas).
+function loadHidden() {
+  try { return new Set(JSON.parse(localStorage.getItem("farol_hidden") || "[]")); }
+  catch { return new Set(); }
+}
+function saveHidden() {
+  try { localStorage.setItem("farol_hidden", JSON.stringify([...state.hidden])); }
+  catch { /* localStorage indisponivel — segue so em memoria */ }
+}
+
+const state = {
+  data: null,
+  collapsed: new Set(),
+  expandedCampaigns: new Set(),
+  expandedAdsets: new Set(),
+  hidden: loadHidden(),
+};
 
 const brl = (n) =>
   (n == null) ? "—" :
@@ -383,6 +436,29 @@ const int = (n) => (n ?? 0).toLocaleString("pt-BR");
 
 const el = (id) => document.getElementById(id);
 const threshold = () => { const e = el("threshold"); return (e && parseFloat(e.value)) || 35; };
+
+// Icones (olho / olho cortado) usados para ocultar e restaurar contas.
+const EYE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.5 19.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.5 19.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+// Custo por resultado e a regra de grifa (verde/amarelo/vermelho).
+// Limites configuraveis:
+const CPR_GREEN = 15;   // abaixo disso: verde
+const CPR_YELLOW = 35;  // ate aqui: amarelo; acima: vermelho
+function costPerResult(x) {
+  return (x && x.result > 0) ? x.spend / x.result : null;
+}
+function cprFlag(x) {
+  const c = costPerResult(x);
+  if (c == null) return "red";          // sem resultado -> vermelho
+  if (c < CPR_GREEN) return "green";
+  if (c <= CPR_YELLOW) return "yellow";
+  return "red";
+}
+function costCell(x) {
+  const c = costPerResult(x);
+  return `<div class="cost ${cprFlag(x)}">${c == null ? "—" : brl(c)}</div>`;
+}
 
 // ---------------------------------------------------------------
 //  Dados de exemplo embutidos (usados se o backend nao responder,
@@ -531,10 +607,22 @@ function render() {
 
   renderDiagnostics(data);
 
+  // Contas visiveis = todas menos as ocultas pelo usuario.
+  const visible = data.accounts.filter(a => !state.hidden.has(a.id));
+
+  // Barra de contas ocultas (clique no chip para restaurar).
+  const hiddenAccts = data.accounts.filter(a => state.hidden.has(a.id));
+  el("hiddenBar").innerHTML = hiddenAccts.length
+    ? `<span class="hb-label">Contas ocultas (${hiddenAccts.length}):</span>` +
+      hiddenAccts.map(a =>
+        `<button class="hidden-chip" data-unhide="${a.id}">${EYE_OFF_SVG}${escapeHtml(a.name)}</button>`
+      ).join("")
+    : "";
+
   // Agrega (apenas gasto e nº de campanhas somam entre objetivos diferentes;
   // "resultado" NAO e somavel no geral, pois mistura unidades distintas).
   let totalSpend = 0, totalCampaigns = 0;
-  for (const a of data.accounts) {
+  for (const a of visible) {
     totalSpend += a.spend || 0;
     totalCampaigns += (a.campaigns || []).length;
   }
@@ -543,13 +631,13 @@ function render() {
   el("kpis").innerHTML = `
     <div class="kpi">
       <div class="k-label">Contas ativas</div>
-      <div class="k-value">${data.accounts.length}</div>
-      <div class="k-sub">monitoradas em tempo real</div>
+      <div class="k-value">${visible.length}</div>
+      <div class="k-sub">${hiddenAccts.length ? `${hiddenAccts.length} oculta(s)` : "monitoradas em tempo real"}</div>
     </div>
     <div class="kpi">
       <div class="k-label">Campanhas ativas</div>
       <div class="k-value">${totalCampaigns}</div>
-      <div class="k-sub">somadas em todas as contas</div>
+      <div class="k-sub">somadas nas contas visíveis</div>
     </div>
     <div class="kpi">
       <div class="k-label">Investimento total</div>
@@ -560,8 +648,9 @@ function render() {
   // Filtros
   const q = el("search").value.trim().toLowerCase();
   const sort = el("sort").value;
+  const onlyRed = el("onlyRed").checked;
 
-  let accounts = data.accounts.map(a => {
+  let accounts = visible.map(a => {
     const camps = (a.campaigns || []).map(c => ({ ...c, over: false }));
     return { ...a, campaigns: camps, overCount: 0 };
   });
@@ -578,6 +667,12 @@ function render() {
     });
   }
 
+  if (onlyRed) {
+    accounts = accounts
+      .map(a => ({ ...a, campaigns: a.campaigns.filter(c => cprFlag(c) === "red") }))
+      .filter(a => a.campaigns.length > 0);
+  }
+
   accounts.sort((a, b) => {
     if (sort === "spend") return (b.spend || 0) - (a.spend || 0);
     return a.name.localeCompare(b.name, "pt-BR");
@@ -589,6 +684,16 @@ function render() {
   } else {
     list.innerHTML = accounts.map(a => accountCard(a, t)).join("");
   }
+
+  // Ocultar conta pelo olhinho (nao dispara o recolher do cabecalho).
+  list.querySelectorAll(".acc-eye").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.hidden.add(btn.dataset.hide);
+      saveHidden();
+      render();
+    });
+  });
 
   // Toggle de expandir/recolher contas
   list.querySelectorAll(".acc-head").forEach(h => {
@@ -623,6 +728,15 @@ function render() {
       r.classList.toggle("open-a");
       const wrap = list.querySelector(`.ad-wrap[data-adwrap="${asid}"]`);
       if (wrap) wrap.classList.toggle("open");
+    });
+  });
+
+  // Restaurar conta oculta clicando no chip.
+  el("hiddenBar").querySelectorAll("[data-unhide]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.hidden.delete(btn.dataset.unhide);
+      saveHidden();
+      render();
     });
   });
 
@@ -664,8 +778,9 @@ function accountCard(a, t) {
           <div class="row ad-row ${adover ? "over" : ""} ${ad.active === false ? "paused" : ""}">
             <div class="marker"></div>
             <div class="ad-name">${addot}${escapeHtml(ad.name)} ${ig}${adPaused}</div>
-            <div class="cell-num">${brl(ad.spend)}</div>
+            <div class="cell-num spend-col">${brl(ad.spend)}</div>
             ${resultCell(ad)}
+            ${costCell(ad)}
           </div>`;
       }).join("");
 
@@ -673,20 +788,22 @@ function accountCard(a, t) {
         <div class="row adset-row sub-row ${sover ? "over" : ""} ${s.active === false ? "paused" : ""} ${aOpen ? "open-a" : ""}" data-asid="${s.id}">
           <div class="marker"></div>
           <div class="adset-name"><span class="cc-chev">›</span>${sdot}${escapeHtml(s.name)}${pausedTag}${adsLabel}</div>
-          <div class="cell-num">${brl(s.spend)}</div>
+          <div class="cell-num spend-col">${brl(s.spend)}</div>
           ${resultCell(s)}
+          ${costCell(s)}
         </div>
         <div class="ad-wrap ${aOpen ? "open" : ""}" data-adwrap="${s.id}">${adRows}</div>`;
     }).join("");
 
-    const emptyMsg = `<div class="row"><div></div><div class="adset-name" style="color:var(--faint)">Sem conjuntos com dados no período.</div><div></div><div class="leads-col"></div></div>`;
+    const emptyMsg = `<div class="row"><div></div><div class="adset-name" style="color:var(--faint)">Sem conjuntos com dados no período.</div><div class="spend-col"></div><div></div><div></div></div>`;
 
     return `
-      <div class="row camp-row ${c.over ? "over" : ""} ${isOpen ? "open-c" : ""}" data-cid="${c.id}">
+      <div class="row camp-row flag-${cprFlag(c)} ${isOpen ? "open-c" : ""}" data-cid="${c.id}">
         <div class="marker"></div>
         <div class="camp-name"><span class="cc-chev">›</span>${dot}${escapeHtml(c.name)}${countLabel}</div>
-        <div class="cell-num">${brl(c.spend)}</div>
+        <div class="cell-num spend-col">${brl(c.spend)}</div>
         ${resultCell(c)}
+        ${costCell(c)}
       </div>
       <div class="adset-wrap ${isOpen ? "open" : ""}" data-wrap="${c.id}">${adsetRows || emptyMsg}</div>`;
   }).join("");
@@ -696,6 +813,7 @@ function accountCard(a, t) {
       <div class="acc-head" data-id="${a.id}">
         <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
         <span class="acc-name">${escapeHtml(a.name)}</span>
+        <button class="acc-eye" data-hide="${a.id}" title="Ocultar esta conta" aria-label="Ocultar esta conta">${EYE_SVG}</button>
         ${a.docUrl ? `<a class="doc-link" href="${escapeHtml(a.docUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir notas da conta">📄 Notas</a>` : ""}
         <div class="acc-meta">
           <div class="acc-stat"><div class="v">${brl(a.spend)}</div><div class="l">investido</div></div>
@@ -705,8 +823,9 @@ function accountCard(a, t) {
       <div class="camp-table">
         <div class="row head">
           <div></div><div>Campanha / conjunto / anúncio</div>
-          <div style="text-align:right">Investido</div>
+          <div style="text-align:right" class="spend-col">Investido</div>
           <div style="text-align:right" class="leads-col">Resultado</div>
+          <div style="text-align:right">Custo/result.</div>
         </div>
         ${rows}
       </div>
@@ -723,6 +842,7 @@ function escapeHtml(s) {
 el("refresh").addEventListener("click", () => load(true));
 el("range").addEventListener("change", () => load(false));
 ["search", "sort"].forEach(id => el(id).addEventListener("input", render));
+el("onlyRed").addEventListener("change", render);
 
 load();
 </script>
