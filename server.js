@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // Marca da versao no ar: aparece no rodape do painel e em /api/health.
 // Sempre que subir uma mudanca, confira se este valor mudou na tela.
-const BUILD = "2026-07-09 · contatos-no-site";
+const BUILD = "2026-07-10 · evento-otimizado";
 
 // Live se QUALQUER uma das variaveis de token estiver definida.
 const isLive = () =>

@@ -120,6 +120,78 @@ function countContacts(actions, contactTypes) {
 }
 
 // ---------------------------------------------------------------
+//  Evento otimizado: descobre EXATAMENTE qual acao a campanha busca.
+//  O conjunto guarda isso em promoted_object:
+//    - custom_conversion_id  -> conversao personalizada. Na API o
+//      action_type vira "offsite_conversion.custom.<ID>" (so numero,
+//      sem nome legivel). E o caso da TINTIM / "Website Contact".
+//    - custom_event_type     -> evento padrao do pixel, ex.: "CONTACT",
+//      "LEAD", "PURCHASE", "SCHEDULE".
+//  Assim nao dependemos de adivinhar o nome do action_type.
+// ---------------------------------------------------------------
+
+// Mapeia o custom_event_type do Meta para a chave canonica da interface.
+const EVENT_TYPE_TO_KEY = {
+  CONTACT: "contact",
+  LEAD: "leads",
+  SCHEDULE: "contact",
+  SUBMIT_APPLICATION: "leads",
+  COMPLETE_REGISTRATION: "leads",
+  PURCHASE: "other",
+};
+
+// Dado o promoted_object, devolve os action_type candidatos (em ordem).
+function expectedActionTypes(promoted) {
+  if (!promoted) return [];
+  const out = [];
+  if (promoted.custom_conversion_id) {
+    out.push(`offsite_conversion.custom.${promoted.custom_conversion_id}`);
+  }
+  const ev = String(promoted.custom_event_type || "").toUpperCase();
+  if (ev) {
+    const low = ev.toLowerCase();
+    out.push(
+      `offsite_conversion.fb_pixel_${low}`,
+      `onsite_conversion.${low}`,
+      `${low}_total`,
+      `${low}_website`,
+      low
+    );
+  }
+  return out;
+}
+
+// Tenta resolver o resultado pelo evento que a campanha realmente otimiza.
+// Retorna { type, value } ou null se nao conseguir identificar.
+function resolveOptimizedEvent(actions, promoted) {
+  if (!Array.isArray(actions) || !promoted) return null;
+  const candidates = expectedActionTypes(promoted);
+  const v = maxAction(actions, candidates);
+  if (v > 0) {
+    const ev = String(promoted.custom_event_type || "").toUpperCase();
+    // Conversao personalizada sem custom_event_type -> tratamos como contato,
+    // que e o uso esmagadoramente comum (contato pelo site / WhatsApp).
+    const key = EVENT_TYPE_TO_KEY[ev] || (promoted.custom_conversion_id ? "contact" : "other");
+    return { type: key, value: v };
+  }
+  return null;
+}
+
+// Ultimo recurso: qualquer conversao personalizada presente nas actions.
+// Usado quando o promoted_object nao veio (permissao/versao da API).
+function anyCustomConversion(actions) {
+  if (!Array.isArray(actions)) return 0;
+  let max = 0;
+  for (const a of actions) {
+    if (/^offsite_conversion\.custom\./.test(String(a.action_type || ""))) {
+      const v = num(a.value);
+      if (v > max) max = v;
+    }
+  }
+  return max;
+}
+
+// ---------------------------------------------------------------
 //  DIAGNOSTICO: lista os action_type reais que a Meta devolve.
 //  Serve para descobrir o nome exato do evento (ex.: o "Contato no
 //  site") quando o painel mostra "-" mas o gerenciador mostra numero.
@@ -141,21 +213,34 @@ export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
   const out = [];
   for (const acc of accs) {
     const fields =
-      `campaign{name},insights.date_preset(${datePreset}){spend,actions}`;
+      `campaign{name},adset{optimization_goal,promoted_object},` +
+      `insights.date_preset(${datePreset}){spend,actions}`;
     const url =
       `${GRAPH(version)}/${acc.id}/ads?fields=${encodeURIComponent(fields)}` +
       `&limit=500&access_token=${encodeURIComponent(acc._token)}`;
     try {
       const page = await fetchJson(url);
       const totals = new Map();
+      const goals = new Map();
       for (const row of page.data || []) {
         const ins = row.insights?.data?.[0];
+        const as = row.adset || {};
+        if (as.optimization_goal || as.promoted_object) {
+          goals.set(
+            JSON.stringify({
+              optimization_goal: as.optimization_goal || null,
+              promoted_object: as.promoted_object || null,
+            }),
+            true
+          );
+        }
         for (const a of ins?.actions || []) {
           totals.set(a.action_type, (totals.get(a.action_type) || 0) + num(a.value));
         }
       }
       out.push({
         account: acc.name || acc.id,
+        optimizedEvents: [...goals.keys()].map((s) => JSON.parse(s)),
         actionTypes: [...totals.entries()]
           .map(([action_type, total]) => ({ action_type, total }))
           .sort((a, b) => b.total - a.total),
@@ -175,13 +260,19 @@ export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
 // ("views", "conversas", "engaj.", "leads", "cliques", "impressoes").
 // `value` e sempre um numero SOMAVEL (por isso usamos impressoes, e nao
 // alcance, para objetivos de reconhecimento — alcance nao soma entre linhas).
-function deriveResult(ins, goal, objective, leadTypes, contactTypes) {
+function deriveResult(ins, goal, objective, leadTypes, contactTypes, promoted) {
   const A = ins.actions;
   const g = String(goal || "").toUpperCase();
   const o = String(objective || "").toUpperCase();
 
+  // PRIORIDADE MAXIMA: o evento que a campanha realmente otimiza, lido do
+  // promoted_object do conjunto. Resolve conversoes personalizadas, cujo
+  // action_type e um ID numerico impossivel de adivinhar.
+  const optimized = resolveOptimizedEvent(A, promoted);
+  if (optimized) return optimized;
+
   const leads = countLeads(A, leadTypes);
-  const contacts = countContacts(A, contactTypes);
+  const contacts = countContacts(A, contactTypes) || anyCustomConversion(A);
   const messaging = actionValue(A, MSG_TYPE);
   const engagement = actionValue(A, "post_engagement");
   const clicks = actionValue(A, "link_click");
@@ -290,7 +381,7 @@ async function fetchAccountCampaigns(account, config) {
     `{spend,impressions,actions,video_thruplay_watched_actions}`;
   const fields =
     `name,effective_status,` +
-    `adset{id,name,effective_status,optimization_goal},` +
+    `adset{id,name,effective_status,optimization_goal,promoted_object},` +
     `campaign{id,name,effective_status,objective},` +
     `creative{instagram_permalink_url,effective_instagram_media_id},` +
     insightsSub;
@@ -319,7 +410,7 @@ async function fetchAccountCampaigns(account, config) {
     const ins = row.insights?.data?.[0];
     if (!ins) continue; // anuncio sem entrega no periodo -> ignora
     const spend = num(ins.spend);
-    const r = deriveResult(ins, as.optimization_goal, camp.objective, leadTypes, contactTypes);
+    const r = deriveResult(ins, as.optimization_goal, camp.objective, leadTypes, contactTypes, as.promoted_object);
     if (spend <= 0 && r.value <= 0) continue; // sem atividade real
 
     const ad = {
