@@ -588,7 +588,7 @@ function isOver() {
 // (definida no backend) vira um rotulo curto aqui.
 const RESULT_LABELS = {
   video: "views", messaging: "conversas", engagement: "engaj.",
-  leads: "leads", contact: "contatos", clicks: "cliques", impressions: "impressões",
+  leads: "leads", contact: "contatos no site", clicks: "cliques", impressions: "impressões",
   other: "resultados", misto: "resultados",
 };
 function resultCell(x) {
@@ -743,7 +743,8 @@ function render() {
 
   const when = new Date(data.generatedAt).toLocaleString("pt-BR");
   const cacheTxt = data.cached ? ` · cache de ${data.cacheAge}s atrás (clique em Atualizar para forçar)` : "";
-  el("foot").textContent = `Atualizado em ${when}` + cacheTxt + (data.demo ? " · dados de exemplo" : "");
+  const buildTxt = data.build ? ` · versão ${data.build}` : "";
+  el("foot").textContent = `Atualizado em ${when}` + cacheTxt + buildTxt + (data.demo ? " · dados de exemplo" : "");
 }
 
 function accountCard(a, t) {

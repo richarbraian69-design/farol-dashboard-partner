@@ -88,8 +88,13 @@ function actionValue(actions, type) {
 // action_type da Meta para "conversas iniciadas por mensagem".
 const MSG_TYPE = "onsite_conversion.messaging_conversation_started_7d";
 
-// Tipos do evento padrao "Contact" do pixel (Contato pelo site). Pode aparecer
-// como o tipo do pixel e/ou agrupado; pegamos o maximo para nao duplicar.
+// Tipos do evento "Contact" do pixel (Contato no site / Website Contact).
+// O nome exato varia conforme a conta e a versao da API, entao NAO usamos
+// uma lista fixa: casamos qualquer action_type que contenha "contact".
+// Isso cobre offsite_conversion.fb_pixel_contact, contact_website,
+// contact_total, onsite_conversion.contact, etc. Pegamos o MAIOR valor
+// entre os que casam (nunca a soma), porque o Meta reporta o mesmo evento
+// sob varios tipos sobrepostos — somar contaria em dobro.
 const CONTACT_TYPES_DEFAULT = [
   "offsite_conversion.fb_pixel_contact",
   "onsite_conversion.contact",
@@ -97,6 +102,70 @@ const CONTACT_TYPES_DEFAULT = [
   "contact_website",
   "contact",
 ];
+
+// Casa por substring, ignorando maiusculas/minusculas. Se CONTACT_ACTION_TYPES
+// for definido no .env, usa exatamente aqueles tipos (util p/ conversao
+// personalizada, ex.: offsite_conversion.custom.123456).
+function countContacts(actions, contactTypes) {
+  if (!Array.isArray(actions)) return 0;
+  if (contactTypes && contactTypes.length) return maxAction(actions, contactTypes);
+  let max = 0;
+  for (const a of actions) {
+    if (/contact/i.test(String(a.action_type || ""))) {
+      const v = num(a.value);
+      if (v > max) max = v;
+    }
+  }
+  return max;
+}
+
+// ---------------------------------------------------------------
+//  DIAGNOSTICO: lista os action_type reais que a Meta devolve.
+//  Serve para descobrir o nome exato do evento (ex.: o "Contato no
+//  site") quando o painel mostra "-" mas o gerenciador mostra numero.
+// ---------------------------------------------------------------
+export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
+  const tokens = (
+    process.env.META_ACCESS_TOKENS || process.env.META_ACCESS_TOKEN || ""
+  ).split(",").map((s) => s.trim()).filter(Boolean);
+  if (!tokens.length) return { demo: true, accounts: [] };
+
+  const version = process.env.META_API_VERSION?.trim() || "v21.0";
+  let accs = [];
+  for (const t of tokens) {
+    try { accs.push(...(await listAdAccounts(t, version))); } catch { /* ignora */ }
+  }
+  const seen = new Set();
+  accs = accs.filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
+
+  const out = [];
+  for (const acc of accs) {
+    const fields =
+      `campaign{name},insights.date_preset(${datePreset}){spend,actions}`;
+    const url =
+      `${GRAPH(version)}/${acc.id}/ads?fields=${encodeURIComponent(fields)}` +
+      `&limit=500&access_token=${encodeURIComponent(acc._token)}`;
+    try {
+      const page = await fetchJson(url);
+      const totals = new Map();
+      for (const row of page.data || []) {
+        const ins = row.insights?.data?.[0];
+        for (const a of ins?.actions || []) {
+          totals.set(a.action_type, (totals.get(a.action_type) || 0) + num(a.value));
+        }
+      }
+      out.push({
+        account: acc.name || acc.id,
+        actionTypes: [...totals.entries()]
+          .map(([action_type, total]) => ({ action_type, total }))
+          .sort((a, b) => b.total - a.total),
+      });
+    } catch (e) {
+      out.push({ account: acc.name || acc.id, error: e.message });
+    }
+  }
+  return { demo: false, datePreset, accounts: out };
+}
 
 // Deriva o "resultado" de uma linha de insights conforme o objetivo.
 // A coluna "Resultados" do Ads Manager depende do objetivo de OTIMIZACAO
@@ -112,7 +181,7 @@ function deriveResult(ins, goal, objective, leadTypes, contactTypes) {
   const o = String(objective || "").toUpperCase();
 
   const leads = countLeads(A, leadTypes);
-  const contacts = maxAction(A, contactTypes || CONTACT_TYPES_DEFAULT);
+  const contacts = countContacts(A, contactTypes);
   const messaging = actionValue(A, MSG_TYPE);
   const engagement = actionValue(A, "post_engagement");
   const clicks = actionValue(A, "link_click");
@@ -126,12 +195,15 @@ function deriveResult(ins, goal, objective, leadTypes, contactTypes) {
   const R = (type, value) => ({ type, value: value || 0 });
 
   // Para objetivos de conversao, o evento otimizado pode ser lead, contato
-  // (Contact do pixel) ou compra. Escolhe o maior sinal real entre eles.
+  // (Contato no site) ou compra. Lead/contato tem prioridade; compra so
+  // entra se nenhum dos dois existir (evita o rotulo generico "resultados").
   const pickConversion = () => {
-    const conv = [["leads", leads], ["contact", contacts], ["other", purchases]]
+    const primary = [["leads", leads], ["contact", contacts]]
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1]);
-    return conv.length ? R(conv[0][0], conv[0][1]) : null;
+    if (primary.length) return R(primary[0][0], primary[0][1]);
+    if (purchases > 0) return R("other", purchases);
+    return null;
   };
 
   // 1) Pelo optimization_goal do conjunto (sinal mais confiavel).
@@ -361,9 +433,9 @@ export async function getDashboardData({
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const contactTypes = (
-    process.env.CONTACT_ACTION_TYPES || CONTACT_TYPES_DEFAULT.join(",")
-  )
+  // Só usa lista fixa se o usuario definir explicitamente no .env.
+  // Vazio => countContacts casa por padrao (qualquer tipo com "contact").
+  const contactTypes = (process.env.CONTACT_ACTION_TYPES || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
