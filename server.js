@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // Marca da versao no ar: aparece no rodape do painel e em /api/health.
 // Sempre que subir uma mudanca, confira se este valor mudou na tela.
-const BUILD = "2026-07-10 · evento-otimizado";
+const BUILD = "2026-07-10b · conversions";
 
 // Live se QUALQUER uma das variaveis de token estiver definida.
 const isLive = () =>
@@ -79,7 +79,8 @@ app.get("/api/data", async (req, res) => {
 app.get("/api/debug/actions", async (req, res) => {
   try {
     const range = DATE_PRESETS[req.query.range] ? req.query.range : "last_7d";
-    res.json(await getActionTypesReport({ datePreset: range }));
+    const account = typeof req.query.account === "string" ? req.query.account : "";
+    res.json(await getActionTypesReport({ datePreset: range, account }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

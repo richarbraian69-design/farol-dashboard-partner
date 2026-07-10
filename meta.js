@@ -196,7 +196,7 @@ function anyCustomConversion(actions) {
 //  Serve para descobrir o nome exato do evento (ex.: o "Contato no
 //  site") quando o painel mostra "-" mas o gerenciador mostra numero.
 // ---------------------------------------------------------------
-export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
+export async function getActionTypesReport({ datePreset = "last_7d", account = "" } = {}) {
   const tokens = (
     process.env.META_ACCESS_TOKENS || process.env.META_ACCESS_TOKEN || ""
   ).split(",").map((s) => s.trim()).filter(Boolean);
@@ -210,17 +210,27 @@ export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
   const seen = new Set();
   accs = accs.filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
 
+  // Filtra por id exato ou por parte do nome (evita varrer todas as contas
+  // e gastar cota da API a toa).
+  if (account) {
+    const q = account.trim().toLowerCase();
+    accs = accs.filter(
+      (a) => a.id.toLowerCase() === q || (a.name || "").toLowerCase().includes(q)
+    );
+  }
+
   const out = [];
   for (const acc of accs) {
     const fields =
       `campaign{name},adset{optimization_goal,promoted_object},` +
-      `insights.date_preset(${datePreset}){spend,actions}`;
+      `insights.date_preset(${datePreset}){spend,actions,conversions}`;
     const url =
       `${GRAPH(version)}/${acc.id}/ads?fields=${encodeURIComponent(fields)}` +
       `&limit=500&access_token=${encodeURIComponent(acc._token)}`;
     try {
       const page = await fetchJson(url);
       const totals = new Map();
+      const convTotals = new Map();
       const goals = new Map();
       for (const row of page.data || []) {
         const ins = row.insights?.data?.[0];
@@ -237,13 +247,19 @@ export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
         for (const a of ins?.actions || []) {
           totals.set(a.action_type, (totals.get(a.action_type) || 0) + num(a.value));
         }
+        for (const a of ins?.conversions || []) {
+          convTotals.set(a.action_type, (convTotals.get(a.action_type) || 0) + num(a.value));
+        }
       }
+      const asList = (m) =>
+        [...m.entries()]
+          .map(([action_type, total]) => ({ action_type, total }))
+          .sort((a, b) => b.total - a.total);
       out.push({
         account: acc.name || acc.id,
         optimizedEvents: [...goals.keys()].map((s) => JSON.parse(s)),
-        actionTypes: [...totals.entries()]
-          .map(([action_type, total]) => ({ action_type, total }))
-          .sort((a, b) => b.total - a.total),
+        actionTypes: asList(totals),
+        conversionTypes: asList(convTotals),
       });
     } catch (e) {
       out.push({ account: acc.name || acc.id, error: e.message });
@@ -261,7 +277,9 @@ export async function getActionTypesReport({ datePreset = "last_7d" } = {}) {
 // `value` e sempre um numero SOMAVEL (por isso usamos impressoes, e nao
 // alcance, para objetivos de reconhecimento — alcance nao soma entre linhas).
 function deriveResult(ins, goal, objective, leadTypes, contactTypes, promoted) {
-  const A = ins.actions;
+  // Junta os dois campos. maxAction/countContacts sempre pegam o MAIOR valor
+  // por tipo (nunca a soma), entao um evento repetido nos dois nao duplica.
+  const A = [...(ins.actions || []), ...(ins.conversions || [])];
   const g = String(goal || "").toUpperCase();
   const o = String(objective || "").toUpperCase();
 
@@ -376,9 +394,14 @@ async function listAdAccounts(token, version) {
 async function fetchAccountCampaigns(account, config) {
   const { version, datePreset, leadTypes, contactTypes } = config;
   const token = account._token || config.token;
+  // ATENCAO: o Meta separa os resultados em DOIS campos.
+  //   actions      -> eventos padrao (lead, video_view, post_engagement...)
+  //   conversions  -> conversoes personalizadas e eventos de pixel
+  // Uma conversao personalizada (ex.: TINTIM) pode aparecer SO em
+  // "conversions". Por isso pedimos os dois e juntamos na hora de contar.
   const insightsSub =
     `insights.date_preset(${datePreset})` +
-    `{spend,impressions,actions,video_thruplay_watched_actions}`;
+    `{spend,impressions,actions,conversions,video_thruplay_watched_actions}`;
   const fields =
     `name,effective_status,` +
     `adset{id,name,effective_status,optimization_goal,promoted_object},` +
